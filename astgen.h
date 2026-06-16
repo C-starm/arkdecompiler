@@ -394,8 +394,17 @@ public:
 
             auto curtargetid = inst->GetId();
             auto astcomplex = this->DetectComplexOfAST(expression);
-                        
-            if(astcomplex>5 || expression->IsCallExpression() || this->undefinedregids.find(curtargetid) != this->undefinedregids.end()){
+
+            // A call has side effects, so materialising it into `vN = call(); ... vN`
+            // is required when its result is consumed at MORE THAN ONE site (inlining
+            // would duplicate the call). But when the result has a SINGLE user, the
+            // call runs exactly once at that one use site whether we inline or not —
+            // so inlining is safe and yields far more readable source (e.g.
+            // `return JSON.stringify(x)` instead of `v8 = JSON.stringify(x); return v8`).
+            // This removes the bulk of leftover temp registers without reordering effects.
+            bool call_needs_materialize = expression->IsCallExpression() && !inst->HasSingleUser();
+
+            if(astcomplex>5 || call_needs_materialize || this->undefinedregids.find(curtargetid) != this->undefinedregids.end()){
                 // dealwith untraved_reference
                 auto dst_reg_identifier = this->GetIdentifierByReg(curtargetid);
                 auto assignexpression = AllocNode<es2panda::ir::AssignmentExpression>(this, 
