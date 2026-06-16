@@ -138,7 +138,12 @@ void FunDepScan::VisitEcma(panda::compiler::GraphVisitor *visitor, Inst *inst_ba
                         auto memeber_offset = (*enc->methodname2offset_)[member_function];
                         (*enc->class2memberfuns_)[constructor_offset].insert(memeber_offset);
                     }else{
-                        HandleError("#function dep scan: DEFINECLASSWITHBUFFER");
+                        // A class literal array also carries non-method entries
+                        // (field names, property keys, ArkUI builder markers, etc.)
+                        // that legitimately have no method offset. Skipping them is
+                        // normal; aborting the whole decompile here is wrong and
+                        // breaks every real app that defines classes with fields.
+                        continue;
                     }
                 }
             }
