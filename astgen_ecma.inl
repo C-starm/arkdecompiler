@@ -1439,7 +1439,15 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
             std::cout << "size: " << lexicalenvstack->Size() << std::endl;
 
             if(lexicalenvstack->GetLexicalEnv(tier)[index] == nullptr){
-                HandleError("#LDLEXVAR: lexicalenv is null");
+                // Reading a lexical var captured from an enclosing function scope
+                // that this method's per-BB env model never populated. Rather than
+                // aborting, synthesise a deterministic closure name for the
+                // (tier,index) slot so the read resolves to a stable identifier
+                // (matching the STLEXVAR closure_* naming above). This keeps the
+                // decompile going and yields readable captured-variable references.
+                auto synthesized = new std::string(
+                    "lexvar_t" + std::to_string(tier) + "_i" + std::to_string(index));
+                lexicalenvstack->Set(tier, index, synthesized);
             }
 
             auto identifier_name = lexicalenvstack->Get(tier, index);
@@ -1513,7 +1521,9 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
             std::cout << "size: " << lexicalenvstack->Size() << std::endl;
 
             if(lexicalenvstack->GetLexicalEnv(tier)[index] == nullptr){
-                HandleError("#TESTIN: lexicalenv is null");
+                // captured outer-scope slot: synthesise a stable name (see LDLEXVAR)
+                lexicalenvstack->Set(tier, index, new std::string(
+                    "lexvar_t" + std::to_string(tier) + "_i" + std::to_string(index)));
             }
 
             auto identifier_name = lexicalenvstack->Get(tier, index);
@@ -1740,7 +1750,9 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
             auto index = static_cast<uint32_t>(inst->GetImms()[2]);
             auto lexicalenvstack = enc->bb2lexicalenvstack_[inst->GetBasicBlock()];
             if(lexicalenvstack->GetLexicalEnv(tier)[index] == nullptr){
-                HandleError("#LDLEXVAR: lexicalenv is null");
+                // captured outer-scope slot: synthesise a stable name (see LDLEXVAR)
+                lexicalenvstack->Set(tier, index, new std::string(
+                    "lexvar_t" + std::to_string(tier) + "_i" + std::to_string(index)));
             }
             auto attr_name = lexicalenvstack->Get(tier, index);
             auto attr_expression = enc->GetIdentifierByName(attr_name);
@@ -1977,7 +1989,9 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
             std::cout << "size: " << lexicalenvstack->Size() << std::endl;
 
             if(lexicalenvstack->GetLexicalEnv(tier)[index] == nullptr){
-                HandleError("#LDLEXVAR: lexicalenv is null");
+                // captured outer-scope slot: synthesise a stable name (see LDLEXVAR)
+                lexicalenvstack->Set(tier, index, new std::string(
+                    "lexvar_t" + std::to_string(tier) + "_i" + std::to_string(index)));
             }
 
             auto identifier_name = lexicalenvstack->Get(tier, index);
@@ -2113,13 +2127,26 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
        {
             panda::es2panda::ir::Expression* funname = enc->GetIdentifierByName("super");
             auto source_expression =  *enc->GetExpressionByRegIndex(inst, 0);
-            auto arrayexpression = source_expression->AsArrayExpression();
-            auto constElements = arrayexpression->Elements();
-            auto &nonConstElements = const_cast<ArenaVector<es2panda::ir::Expression *> &>(constElements);
 
-            es2panda::ir::CallExpression* callexpression = AllocNode<es2panda::ir::CallExpression>(enc, 
+            ArenaVector<es2panda::ir::Expression *> arguments(enc->parser_program_->Allocator()->Adapter());
+            if(source_expression->IsArrayExpression()){
+                // super([...inline elements]) — splice the array's elements as args.
+                auto constElements = source_expression->AsArrayExpression()->Elements();
+                for(auto *el : constElements){
+                    arguments.push_back(el);
+                }
+            }else{
+                // super(...restArgs) where the spread source is NOT an array literal
+                // (e.g. a rest-param identifier from COPYRESTARGS). Calling
+                // AsArrayExpression() here used to segfault on every real app that
+                // forwards rest args to super(). Wrap it as a single spread element.
+                arguments.push_back(AllocNode<es2panda::ir::SpreadElement>(
+                    enc, es2panda::ir::AstNodeType::SPREAD_ELEMENT, source_expression));
+            }
+
+            es2panda::ir::CallExpression* callexpression = AllocNode<es2panda::ir::CallExpression>(enc,
                                                                                 funname,
-                                                                                std::move(nonConstElements),
+                                                                                std::move(arguments),
                                                                                 nullptr,
                                                                                 false
                                                                             );
