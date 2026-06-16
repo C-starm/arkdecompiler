@@ -1,0 +1,45 @@
+# Stage 2: fast iteration. Patches + compiles, on top of the synced base.
+#   sudo docker build -f docker/Dockerfile.build -t arkdecompiler:latest \
+#        --build-arg BASE=arkdecompiler-base:5.1.0 .
+#
+# Re-running this after editing patches/ or C++ source is fast (seconds to set
+# up; compile time dominated by ninja's incremental work).
+ARG BASE=arkdecompiler-base:5.1.0
+FROM ${BASE}
+
+WORKDIR /root/harmonyos
+
+# Bring in THIS local arkdecompiler source (so your C++ edits get compiled).
+COPY . /root/harmonyos/arkdecompiler
+
+# Apply the toolchain patches. Idempotent: reset to pristine first so the layer
+# can rebuild repeatedly without "already applied" failures.
+#
+# NOTE: the arkdecompiler SOURCE fixes (patches/arkdecompiler_real_hap_fixes.patch)
+# are NOT applied here — the COPY above already brings the fixed source. That
+# patch exists for upstreaming the fixes to jd-opensource/arkdecompiler.
+RUN set -eux; \
+    P=/root/harmonyos/arkdecompiler/patches; \
+    cp /root/pristine/protobuf.BUILD.gn      third_party/protobuf/BUILD.gn; \
+    cp /root/pristine/runtime_core.BUILD.gn  arkcompiler/runtime_core/BUILD.gn; \
+    cd /root/harmonyos/arkcompiler/runtime_core && git checkout -- . 2>/dev/null || true; \
+    git apply --whitespace=nowarn $P/arkcompiler_runtime_core_a94c360.patch; \
+    cd /root/harmonyos/arkcompiler/ets_frontend && git checkout -- . 2>/dev/null || true; \
+    git apply --whitespace=nowarn $P/arkcompiler_ets_frontend_09e1955c6.patch; \
+    cd /root/harmonyos/third_party/protobuf && git checkout -- . 2>/dev/null || true; \
+    git apply --whitespace=nowarn $P/third_party_protobuf_0e4c27.patch; \
+    cd /root/harmonyos/arkcompiler/toolchain && git checkout -- . 2>/dev/null || true; \
+    git apply --whitespace=nowarn $P/arkcompiler_toolchain_protobuf.patch
+
+# Build xabc. build.sh runs its OWN `gn gen out` in arkdecompiler/ — a self-
+# contained graph that compiles the runtime_core libs it needs plus xabc. The
+# full `ark.py x64.release` toolchain build is NOT required for decompilation
+# (it only produces es2abc/ark_disasm, the compile direction), and in fact fails
+# standalone because the xabc GN group pulls the patched protobuf into the
+# x64.release graph where the library targets can't build. So we skip it.
+RUN cd /root/harmonyos/arkdecompiler && ./build.sh
+RUN test -f /root/harmonyos/arkdecompiler/out/arkcompiler/common/xabc \
+    && echo "xabc built OK" \
+    || (echo "ERROR: xabc not found after build" && exit 1)
+
+CMD ["/bin/bash"]

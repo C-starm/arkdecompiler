@@ -1,0 +1,43 @@
+# Stage 1: heavy, cached-once base. Syncs the OpenHarmony Ark toolchain.
+#
+# This layer is the expensive one (tens of GB, network-bound). Build it ONCE:
+#   sudo docker build -f docker/Dockerfile.base -t arkdecompiler-base:5.1.0 .
+#
+# Then iterate on patches/source via Dockerfile.build (FROM this image), which
+# only re-runs the fast patch+compile steps.
+FROM ubuntu:20.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    DIRECTORY_NAME=harmonyos \
+    PATH=/root/bin:/root/harmonyos/prebuilts/build-tools/linux-x86/bin:$PATH
+
+RUN apt-get update && apt-get install -y \
+    python3 python3-pip ruby git git-lfs gcc-multilib g++-multilib \
+    zlib1g-dev libc++1 curl nodejs vim less \
+    && rm -rf /var/lib/apt/lists/*
+RUN ln -s /usr/bin/python3 /usr/bin/python
+RUN git config --global user.email "build@example.com" \
+    && git config --global user.name "build"
+
+RUN mkdir -p /root/bin \
+    && curl -L https://gitee.com/oschina/repo/raw/fork_flow/repo-py3 -o /root/bin/repo \
+    && chmod a+x /root/bin/repo \
+    && pip3 install -i https://pypi.tuna.tsinghua.edu.cn/simple requests
+
+WORKDIR /root/${DIRECTORY_NAME}
+
+RUN repo init -u https://gitee.com/ark-standalone-build/manifest.git -b OpenHarmony-5.1.0-Release \
+    && repo sync -c -j8 \
+    && repo forall -c 'git lfs pull' \
+    && ./prebuilts_download.sh
+
+# Snapshot the pristine BUILD.gn files we patch, so Dockerfile.build can always
+# reset to a clean base before re-applying patches (idempotent iteration).
+RUN mkdir -p /root/pristine \
+    && cp third_party/protobuf/BUILD.gn /root/pristine/protobuf.BUILD.gn \
+    && cp arkcompiler/runtime_core/BUILD.gn /root/pristine/runtime_core.BUILD.gn
+
+RUN sed -i '1s|.*|#!/usr/bin/env python3|' /root/harmonyos/third_party/openssl/run_command.py
+
+CMD ["/bin/bash"]

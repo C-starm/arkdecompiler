@@ -1,0 +1,22 @@
+diff --git a/build/third_party_gn/protobuf/BUILD.gn b/build/third_party_gn/protobuf/BUILD.gn
+index 754fca1..5839b0f 100644
+--- a/build/third_party_gn/protobuf/BUILD.gn
++++ b/build/third_party_gn/protobuf/BUILD.gn
+@@ -53,7 +53,7 @@ ohos_shared_library("protobuf_lite") {
+     "$protobuf_src_root/google/protobuf/wire_format_lite.cc",
+   ]
+   if (!is_asan && !is_debug) {
+-    version_script = "libprotobuf_lite.map"
++    # version_script = "libprotobuf_lite.map"  # disabled standalone (no .map rule)
+   }
+   include_dirs = [
+     "$protobuf_src_root/google/protobuf/**/*.h",
+@@ -216,7 +216,7 @@ ohos_shared_library("protobuf") {
+ 
+   deps = [ ":protobuf_lite" ]
+   if (!is_asan && !is_debug) {
+-    version_script = "libprotobuf.map"
++    # version_script = "libprotobuf.map"  # disabled standalone (no .map rule)
+   }
+ 
+   public_configs = [ ":protobuf_config" ]
