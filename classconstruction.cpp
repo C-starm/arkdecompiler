@@ -58,7 +58,10 @@ bool ConstructClasses(std::map<uint32_t, std::set<uint32_t>> &class2memberfuns, 
         method2scriptfunast.erase(constructor_offset);
 
         if(func == nullptr){
-            HandleError("#DecompilePandaFile: find constructor function fail!");
+            // The class constructor itself was skipped/unanalysable — we can't
+            // build a class without it, so skip the whole class rather than abort.
+            std::cout << "skip class with no constructor AST, offset: " << constructor_offset << std::endl;
+            continue;
         }
 
         auto funcExpr = AllocNode<panda::es2panda::ir::FunctionExpression>(parser_program, func);
@@ -88,8 +91,13 @@ bool ConstructClasses(std::map<uint32_t, std::set<uint32_t>> &class2memberfuns, 
             method2scriptfunast.erase(member_func_offset);
 
             if(func == nullptr){
-                std::cout << "member function offset: " << member_func_offset << std::endl;
-                HandleError("#ConstructClasses: find member function fail!");
+                // This member function has no AST because it was skipped during
+                // decompilation (unanalysable — e.g. IR-build failure, irreducible
+                // loop, or one of the skipfailfuns from the dep-scan pass). The
+                // class still lists it as a member. Rather than aborting the whole
+                // file, just omit this one method and keep building the class.
+                std::cout << "skip member function with no AST, offset: " << member_func_offset << std::endl;
+                continue;
             }
 
             auto funcExpr = AllocNode<es2panda::ir::FunctionExpression>(parser_program, func);
@@ -100,7 +108,9 @@ bool ConstructClasses(std::map<uint32_t, std::set<uint32_t>> &class2memberfuns, 
             if(raw2newname.find(raw_member_name) != raw2newname.end()){
                 new_member_name =  raw2newname[raw_member_name];
             }else{
-                HandleError("#ConstructClasses: find new_member_name newname error");
+                // No renamed identifier for this member — skip it rather than abort.
+                std::cout << "skip member with unresolved name: " << raw_member_name << std::endl;
+                continue;
             }
 
             panda::es2panda::util::StringView name_view3 = panda::es2panda::util::StringView(*(new std::string(new_member_name)));
