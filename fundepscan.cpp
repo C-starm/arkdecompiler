@@ -133,16 +133,39 @@ void FunDepScan::VisitEcma(panda::compiler::GraphVisitor *visitor, Inst *inst_ba
             auto literalarray_offset = static_cast<uint32_t>(inst->GetImms()[2]);
             auto member_functions = GetLiteralArrayByOffset(enc->program_, literalarray_offset);
             if(member_functions){
+                // The class literal array stores member names in SHORT form
+                // (e.g. "#~@0>#onCreate"), but methodname2offset_ is keyed by the
+                // FULL method name ("&record&.#~@0>#onCreate"). Derive the class
+                // prefix from the constructor's full name and try the qualified
+                // key too — otherwise plain/ability-class members (onCreate, ...)
+                // never get added to class2memberfuns and their bodies are lost.
+                std::string ctor_full = enc->ir_interface_->GetMethodIdByOffset(constructor_offset);
+                std::string class_prefix;
+                {
+                    // ctor_full looks like "&record&.#~@0=#ClassName:(...)"; the
+                    // class prefix is everything up to and including the last '.'
+                    // before the ctor's own "#..." segment.
+                    std::string noargs = RemoveArgumentsOfFunc(ctor_full);
+                    size_t dot = noargs.find_last_of('.');
+                    if (dot != std::string::npos) class_prefix = noargs.substr(0, dot + 1);
+                }
                 for(auto const& member_function : *member_functions){
-                    if (enc->methodname2offset_->find(member_function) != enc->methodname2offset_->end()) {
-                        auto memeber_offset = (*enc->methodname2offset_)[member_function];
+                    uint32_t memeber_offset = 0;
+                    bool found = false;
+                    auto it = enc->methodname2offset_->find(member_function);
+                    if (it != enc->methodname2offset_->end()) {
+                        memeber_offset = it->second; found = true;
+                    } else if (!class_prefix.empty()) {
+                        auto it2 = enc->methodname2offset_->find(class_prefix + member_function);
+                        if (it2 != enc->methodname2offset_->end()) {
+                            memeber_offset = it2->second; found = true;
+                        }
+                    }
+                    if (found) {
                         (*enc->class2memberfuns_)[constructor_offset].insert(memeber_offset);
-                    }else{
-                        // A class literal array also carries non-method entries
-                        // (field names, property keys, ArkUI builder markers, etc.)
-                        // that legitimately have no method offset. Skipping them is
-                        // normal; aborting the whole decompile here is wrong and
-                        // breaks every real app that defines classes with fields.
+                    } else {
+                        // Non-method entry (field name, property key, ArkUI builder
+                        // marker) — legitimately has no method offset; skip it.
                         continue;
                     }
                 }

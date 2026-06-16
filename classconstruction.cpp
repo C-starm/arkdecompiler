@@ -17,6 +17,33 @@ bool IsInstanceMethod(std::string func_name){
     return prefix.find('~') != std::string::npos && prefix.find('>') != std::string::npos;
 }
 
+// An anonymous build/callback closure (ArkUI build() lambdas, .then/animation
+// callbacks) has a lambda marker `@<digit>` in its name prefix
+// (e.g. "#~@0>@2*#", "#~@0>@1*^1*#"). These look like instance methods to
+// IsInstanceMethod (prefix has ~ and >) but are NOT declared class members, so
+// they aren't in `memberfuncs` and were wrongly early-skipped in
+// DecompileFunction — their bodies never got decompiled (the func_8.. = undefined
+// problem). Detect them so they're still decompiled and emitted.
+bool IsAnonymousClosure(std::string func_name){
+    auto prefix = ExtractPrefix(func_name);
+    size_t at = prefix.find('@');
+    while (at != std::string::npos) {
+        // a '@' immediately followed by a digit is the lambda-index marker
+        if (at + 1 < prefix.size() && std::isdigit(static_cast<unsigned char>(prefix[at + 1]))) {
+            // distinguish the class marker `@0>` (always present) from extra
+            // `@N*` lambda markers: a closure has a '@<digit>' that is followed
+            // later by '*' (the lambda suffix) rather than '>'.
+            size_t star = prefix.find('*', at);
+            size_t gt = prefix.find('>', at);
+            if (star != std::string::npos && (gt == std::string::npos || star < gt)) {
+                return true;
+            }
+        }
+        at = prefix.find('@', at + 1);
+    }
+    return false;
+}
+
 bool ConstructClasses(std::map<uint32_t, std::set<uint32_t>> &class2memberfuns, panda::es2panda::parser::Program *parser_program,  BytecodeOptIrInterface *ir_interface,
         std::map<uint32_t, panda::es2panda::ir::Expression*> &class2father, std::map<uint32_t, panda::es2panda::ir::ScriptFunction *> &method2scriptfunast,
         std::map<uint32_t, panda::es2panda::ir::ClassDeclaration *> &ctor2classdeclast, std::map<std::string, std::string>& raw2newname
@@ -86,7 +113,7 @@ bool ConstructClasses(std::map<uint32_t, std::set<uint32_t>> &class2memberfuns, 
             if(constructor_offset == member_func_offset){
                 continue;
             }
-            
+
             auto func = method2scriptfunast[member_func_offset];
             method2scriptfunast.erase(member_func_offset);
 
@@ -109,7 +136,6 @@ bool ConstructClasses(std::map<uint32_t, std::set<uint32_t>> &class2memberfuns, 
                 new_member_name =  raw2newname[raw_member_name];
             }else{
                 // No renamed identifier for this member — skip it rather than abort.
-                std::cout << "skip member with unresolved name: " << raw_member_name << std::endl;
                 continue;
             }
 

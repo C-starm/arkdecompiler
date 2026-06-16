@@ -140,8 +140,13 @@ bool DecompileFunction(pandasm::Program *prog, panda::es2panda::parser::Program 
 
     LOG(INFO, BYTECODE_OPTIMIZER) << "Optimizing function: " << func_name;
 
-    if(IsInstanceMethod(func_name) && !contains(*memberfuncs, mda.GetMethodId().GetOffset())){
-        
+    // Skip instance methods that are handled via the class-member path — EXCEPT
+    // anonymous build/callback closures (ArkUI build() lambdas, .then/animation
+    // callbacks). Those look like instance methods but aren't declared members,
+    // so skipping them dropped their bodies entirely (the func_8.. = undefined
+    // bug). Let closures through so their bodies get decompiled and emitted.
+    if(IsInstanceMethod(func_name) && !IsAnonymousClosure(func_name) && !contains(*memberfuncs, mda.GetMethodId().GetOffset())){
+
         return true;
     }
     
