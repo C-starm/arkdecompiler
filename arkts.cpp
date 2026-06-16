@@ -2,6 +2,42 @@
 
 namespace panda::es2panda::ir {
 
+// Forward decls (defined later in this file).
+static std::string EscapeForArkTSString(const std::string &s);
+
+// True if `s` is well-formed standard UTF-8 (valid CJK/emoji identifiers pass).
+static bool IsValidUtf8(const std::string &s)
+{
+    size_t i = 0, n = s.size();
+    while (i < n) {
+        unsigned char c = static_cast<unsigned char>(s[i]);
+        size_t len;
+        if (c < 0x80) len = 1;
+        else if ((c & 0xE0) == 0xC0) len = 2;
+        else if ((c & 0xF0) == 0xE0) {
+            // 3-byte: reject CESU-8 surrogate range 0xED 0xA0-0xBF.
+            if (c == 0xED && i + 1 < n &&
+                (static_cast<unsigned char>(s[i + 1]) & 0xF0) >= 0xA0) return false;
+            len = 3;
+        }
+        else if ((c & 0xF8) == 0xF0) len = 4;
+        else return false;
+        if (i + len > n) return false;
+        for (size_t k = 1; k < len; k++)
+            if ((static_cast<unsigned char>(s[i + k]) & 0xC0) != 0x80) return false;
+        i += len;
+    }
+    return true;
+}
+
+// Identifiers pass through unchanged when valid UTF-8 (incl. CJK/emoji names).
+// Only escape when the name carries invalid bytes — which happens when a string
+// constant reaches the emitter as a quoted-identifier node (CESU-8 surrogates).
+static std::string SanitizeIdentifier(const std::string &name)
+{
+    return IsValidUtf8(name) ? name : EscapeForArkTSString(name);
+}
+
 ArkTSGen::ArkTSGen(const BlockStatement *program, util::StringView sourceCode) : index_(sourceCode), indent_(0)
 {
     SerializeObject(reinterpret_cast<const ir::AstNode *>(program));
@@ -133,7 +169,7 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
         }
         case AstNodeType::IDENTIFIER:{
             auto identifier = node->AsIdentifier();
-            ss_ << identifier->Name();
+            ss_ << SanitizeIdentifier(std::string(identifier->Name().Utf8()));
             break;
         }
 
@@ -962,14 +998,85 @@ void ArkTSGen::SerializePropKey(const char *str)
     ss_ << ": ";
 }
 
+// Escape a (M)UTF-8 byte string into a valid, readable ArkTS string literal.
+// Panda stores strings as modified UTF-8 where supplementary-plane characters
+// are CESU-8 surrogate pairs (0xED 0xA0-0xBF ...), which are INVALID standard
+// UTF-8. Emitting them raw produced non-UTF-8 output files. Here we pass valid
+// UTF-8 through untouched, escape JS-significant chars, and turn surrogate /
+// invalid bytes into \uXXXX so the result is always valid text.
+static std::string EscapeForArkTSString(const std::string &s)
+{
+    static const char *HEX = "0123456789abcdef";
+    std::string out;
+    out.reserve(s.size() + 2);
+    auto emit_u = [&](unsigned cp) {
+        out += "\\u";
+        out += HEX[(cp >> 12) & 0xF];
+        out += HEX[(cp >> 8) & 0xF];
+        out += HEX[(cp >> 4) & 0xF];
+        out += HEX[cp & 0xF];
+    };
+
+    size_t i = 0, n = s.size();
+    while (i < n) {
+        unsigned char c = static_cast<unsigned char>(s[i]);
+        // JS-significant chars and controls.
+        switch (c) {
+            case '"':  out += "\\\""; i++; continue;
+            case '\\': out += "\\\\"; i++; continue;
+            case '\n': out += "\\n";  i++; continue;
+            case '\r': out += "\\r";  i++; continue;
+            case '\t': out += "\\t";  i++; continue;
+        }
+        if (c < 0x20) { emit_u(c); i++; continue; }
+        if (c < 0x80) { out += static_cast<char>(c); i++; continue; }
+
+        // MUTF-8 encodes the NUL char U+0000 as the two bytes 0xC0 0x80 (so that
+        // no embedded 0x00 appears). That overlong form is invalid standard UTF-8
+        // — emit it as  .
+        if (c == 0xC0 && i + 1 < n && static_cast<unsigned char>(s[i + 1]) == 0x80) {
+            emit_u(0);
+            i += 2;
+            continue;
+        }
+
+        // CESU-8 encoded surrogate: 0xED followed by 0xA0-0xBF (HIGH surrogate
+        // D800-DBFF) or 0xB0-0xBF (LOW surrogate DC00-DFFF). Both are invalid in
+        // standard UTF-8 and must be escaped.
+        if (c == 0xED && i + 2 < n &&
+            static_cast<unsigned char>(s[i + 1]) >= 0xA0) {
+            unsigned cp = 0xD000 | ((s[i + 1] & 0x3F) << 6) | (s[i + 2] & 0x3F);
+            bool is_high = cp >= 0xD800 && cp <= 0xDBFF;
+            // High surrogate immediately followed by a low surrogate → astral char.
+            if (is_high && i + 5 < n && static_cast<unsigned char>(s[i + 3]) == 0xED &&
+                static_cast<unsigned char>(s[i + 4]) >= 0xB0) {
+                unsigned lo = 0xD000 | ((s[i + 4] & 0x3F) << 6) | (s[i + 5] & 0x3F);
+                emit_u(cp);   // emit the surrogate pair as two \u escapes
+                emit_u(lo);
+                i += 6;
+                continue;
+            }
+            // Lone surrogate (high or low) — escape it so output stays valid text.
+            emit_u(cp);
+            i += 3;
+            continue;
+        }
+
+        // Otherwise assume well-formed UTF-8 and pass the byte through.
+        out += static_cast<char>(c);
+        i++;
+    }
+    return out;
+}
+
 void ArkTSGen::SerializeString(const char *str)
 {
-    ss_ << "\"" << str << "\"";
+    ss_ << "\"" << EscapeForArkTSString(str ? std::string(str) : std::string()) << "\"";
 }
 
 void ArkTSGen::SerializeString(const util::StringView &str)
 {
-    ss_ << "\"" << str.Utf8() << "\"";
+    ss_ << "\"" << EscapeForArkTSString(std::string(str.Utf8())) << "\"";
 }
 
 void ArkTSGen::SerializeNumber(size_t number)
