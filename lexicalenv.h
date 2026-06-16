@@ -33,6 +33,7 @@ public:
     void AddIndexes(size_t index);
     void LogIndexes();
     bool IsValidIndex(size_t index) const;
+    void GrowToFit(size_t index);
 
 private:
     void CheckIndex(size_t index) const;

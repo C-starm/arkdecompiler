@@ -44,23 +44,38 @@ LexicalEnv::LexicalEnv(const LexicalEnv& other)
     indexes_.insert(other.indexes_.begin(), other.indexes_.end());
 }
 
+void LexicalEnv::GrowToFit(size_t index) {
+    // The env capacity comes from the NEWLEXENV lexenv_size, but per-BB env copies
+    // and captured outer-scope slots can address an index beyond it. Rather than
+    // aborting the whole decompile (old CheckIndex), grow the slot vector to fit —
+    // consistent with the tolerant LexicalEnvStack::GetLexicalEnv auto-grow.
+    if (index >= capacity_) {
+        capacity_ = index + 1;
+        expressions_.resize(capacity_, nullptr);
+    }
+}
+
 std::string*& LexicalEnv::operator[](size_t index) {
-    CheckIndex(index);
+    GrowToFit(index);
     return expressions_[index];
 }
 
 const std::string* LexicalEnv::operator[](size_t index) const {
-    CheckIndex(index);
+    if (index >= capacity_) {
+        return nullptr;  // const path can't grow; treat as an unpopulated slot
+    }
     return expressions_[index];
 }
 
 std::string* LexicalEnv::Get(size_t index) const {
-    CheckIndex(index);
+    if (index >= capacity_) {
+        return nullptr;  // unpopulated/out-of-range captured slot
+    }
     return expressions_[index];
 }
 
 void LexicalEnv::Set(size_t index, std::string* expr) {
-    CheckIndex(index);
+    GrowToFit(index);
     if(expr == nullptr){
         HandleError("expr is nullptr");
     }
@@ -182,8 +197,16 @@ void LexicalEnvStack::SetIndexes(size_t A, std::set<size_t> indexes) {
 
 
 LexicalEnv& LexicalEnvStack::GetLexicalEnv(size_t A) {
-    CheckStackIndex(A);
-    
+    // A LDLEXVAR/STLEXVAR can reference an environment from an enclosing function
+    // scope that exists at runtime but was never materialised in this method's
+    // per-BB stack model (the parent's NEWLEXENV lives in another method). Rather
+    // than aborting the whole decompile (the old CheckStackIndex behaviour), grow
+    // the stack with placeholder envs so the access resolves to a captured/closure
+    // variable. This matches the already-tolerant Pop()/SetIndexes()/IsSetSafe().
+    while (stack_.size() <= A) {
+        stack_.emplace(stack_.begin());  // default capacity (256)
+    }
+
     size_t actualIndex = stack_.size() - 1 - A;
     return stack_[actualIndex];
 }
