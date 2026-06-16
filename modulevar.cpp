@@ -89,9 +89,14 @@ void AddExportAst(panda::es2panda::parser::Program *parser_program,  std::string
 }
 
 void GetModuleLiteralArray(std::unique_ptr<const panda_file::File>& file_, panda_file::File::EntityId &module_id, panda::disasm::Disassembler& disasm,
-            panda::es2panda::parser::Program *parser_program, std::map<size_t, std::vector<std::string>> &index2namespaces, 
-            std::vector<std::string>& localnamespaces)
+            panda::es2panda::parser::Program *parser_program, std::map<size_t, std::vector<std::string>> &index2namespaces,
+            std::vector<std::string>& localnamespaces, std::vector<std::string>& importnamespaces,
+            std::map<std::string, std::vector<std::string>>* recordimportnamespaces, const std::string& recordname)
 {
+    // Per-module imports collected here. LDEXTERNALMODULEVAR's offset is
+    // module-local (each module's ImportEntries start at 0), so we must NOT use
+    // the global flat importnamespaces. Stored under the record name below.
+    std::vector<std::string> moduleimports;
     // AddImportAst(parser_program, "a", "b", "./module_foo1"); // mock refs
 
     std::map<size_t, std::string> index2importmodule;
@@ -171,6 +176,13 @@ void GetModuleLiteralArray(std::unique_ptr<const panda_file::File>& file_, panda
             index2namespaces[importmodule2index[curmaps["module_request"]]].push_back(curmaps["local_name"]);
 
             localnamespaces.push_back(curmaps["local_name"]);
+            // LDEXTERNALMODULEVAR indexes the ImportEntries array (RegularImport
+            // then NamespaceImport order), a SEPARATE index space from local
+            // module vars. Keep an imports-only list so external loads don't index
+            // the export-polluted localnamespaces (which mis-bound base classes /
+            // API receivers, e.g. `extends UIAbility` -> `extends UrlUtils`).
+            importnamespaces.push_back(curmaps["local_name"]);
+            moduleimports.push_back(curmaps["local_name"]);
         }else{
             ss << ", EXPORT ";
             exportmaps_arrays.push_back(curmaps);
@@ -193,14 +205,32 @@ void GetModuleLiteralArray(std::unique_ptr<const panda_file::File>& file_, panda
         std::cout << ss.str() << std::endl;;
     });
 
+    if (recordimportnamespaces != nullptr && !recordname.empty()) {
+        (*recordimportnamespaces)[recordname] = moduleimports;
+    }
 }
 
-void ParseModuleVars(std::unique_ptr<const panda_file::File>& file_, pandasm::Program *prog, panda::disasm::Disassembler& disasm, 
-            panda::es2panda::parser::Program *parser_program, std::map<size_t, std::vector<std::string>>& index2namespaces, 
-            std::vector<std::string>& localnamespaces){
-    
-    
-    
+void ParseModuleVars(std::unique_ptr<const panda_file::File>& file_, pandasm::Program *prog, panda::disasm::Disassembler& disasm,
+            panda::es2panda::parser::Program *parser_program, std::map<size_t, std::vector<std::string>>& index2namespaces,
+            std::vector<std::string>& localnamespaces, std::vector<std::string>& importnamespaces,
+            std::map<std::string, std::vector<std::string>>& recordimportnamespaces){
+
+    // Map each module-literal-array offset to its owning record name, so the
+    // literal-array branch below can attribute imports to the right module
+    // (LDEXTERNALMODULEVAR offsets are per-module).
+    std::map<uint32_t, std::string> moduleoffset2record;
+    for (const auto &r : prog->record_table) {
+        for (const auto &f : r.second.field_list) {
+            if (!f.metadata->GetValue().has_value()) continue;
+            if (f.type.GetId() == panda_file::Type::TypeId::U32) {
+                uint32_t off = f.metadata->GetValue().value().GetValue<uint32_t>();
+                if (disasm.IsModuleLiteralOffset(panda_file::File::EntityId(off))) {
+                    moduleoffset2record[off] = r.first;
+                }
+            }
+        }
+    }
+
     if (panda_file::ContainsLiteralArrayInHeader(file_->GetHeader()->version)) {
         const auto lit_arrays_id = file_->GetLiteralArraysId();
 
@@ -208,14 +238,17 @@ void ParseModuleVars(std::unique_ptr<const panda_file::File>& file_, pandasm::Pr
         size_t num_litarrays = lda.GetLiteralNum();
 
         for (size_t index = 0; index < num_litarrays; index++) {
-            
+
             auto id = lda.GetLiteralArrayId(index);
             if (disasm.module_request_phase_literals_.count(id.GetOffset())) {
                 continue;
             }
 
             if (disasm.IsModuleLiteralOffset(id)) {
-                GetModuleLiteralArray(file_, id, disasm, parser_program, index2namespaces, localnamespaces);
+                std::string rn;
+                auto rit = moduleoffset2record.find(id.GetOffset());
+                if (rit != moduleoffset2record.end()) rn = rit->second;
+                GetModuleLiteralArray(file_, id, disasm, parser_program, index2namespaces, localnamespaces, importnamespaces, &recordimportnamespaces, rn);
             }
         }
     }else{
@@ -229,7 +262,7 @@ void ParseModuleVars(std::unique_ptr<const panda_file::File>& file_, pandasm::Pr
                 if (f.type.GetId() == panda_file::Type::TypeId::U32) {
                     panda_file::File::EntityId module_entity_id(f.metadata->GetValue().value().GetValue<uint32_t>());
                         if (disasm.IsModuleLiteralOffset(module_entity_id)) {
-                            GetModuleLiteralArray(file_, module_entity_id, disasm, parser_program, index2namespaces, localnamespaces);
+                            GetModuleLiteralArray(file_, module_entity_id, disasm, parser_program, index2namespaces, localnamespaces, importnamespaces, &recordimportnamespaces, r.first);
                     }
                 }
             }
@@ -243,7 +276,7 @@ void ParseModuleVars(std::unique_ptr<const panda_file::File>& file_, pandasm::Pr
         // for (uint32_t literal_array_id : literal_array_ids) {
         //     panda_file::File::EntityId id {literal_array_id};
         //     if (disasm.IsModuleLiteralOffset(id)) {
-        //         GetModuleLiteralArray(file_, id, disasm, parser_program, index2namespaces, localnamespaces);
+        //         GetModuleLiteralArray(file_, id, disasm, parser_program, index2namespaces, localnamespaces, importnamespaces);
         //     } 
         // }
     }

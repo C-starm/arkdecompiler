@@ -18,9 +18,12 @@ void AddExportAstNamed(panda::es2panda::parser::Program *parser_program, std::st
 void AddExportAst(panda::es2panda::parser::Program *parser_program,  std::string local_name, std::string export_name);
 
 void GetModuleLiteralArray(std::unique_ptr<const panda_file::File>& file_, panda_file::File::EntityId &module_id, panda::disasm::Disassembler& disasm,
-            panda::es2panda::parser::Program *parser_program, std::map<size_t, std::vector<std::string>>& index2namespaces, std::vector<std::string>& localnamespaces);
+            panda::es2panda::parser::Program *parser_program, std::map<size_t, std::vector<std::string>>& index2namespaces, std::vector<std::string>& localnamespaces,
+            std::vector<std::string>& importnamespaces, std::map<std::string, std::vector<std::string>>* recordimportnamespaces = nullptr,
+            const std::string& recordname = "");
 
-void ParseModuleVars(std::unique_ptr<const panda_file::File>& file_, pandasm::Program *prog, panda::disasm::Disassembler& disasm, 
-            panda::es2panda::parser::Program *parser_program, std::map<size_t, std::vector<std::string>>& index2namespaces, std::vector<std::string>& localnamespaces);
+void ParseModuleVars(std::unique_ptr<const panda_file::File>& file_, pandasm::Program *prog, panda::disasm::Disassembler& disasm,
+            panda::es2panda::parser::Program *parser_program, std::map<size_t, std::vector<std::string>>& index2namespaces, std::vector<std::string>& localnamespaces,
+            std::vector<std::string>& importnamespaces, std::map<std::string, std::vector<std::string>>& recordimportnamespaces);
 
 #endif

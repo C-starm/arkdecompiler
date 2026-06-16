@@ -1485,14 +1485,11 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
             break;
         }
 
+       // LOCAL module vars index the local-export slots (localnamespaces_).
        case compiler::RuntimeInterface::IntrinsicId::LDLOCALMODULEVAR_IMM8:
-       case compiler::RuntimeInterface::IntrinsicId::LDEXTERNALMODULEVAR_IMM8:
        case compiler::RuntimeInterface::IntrinsicId::WIDE_LDLOCALMODULEVAR_PREF_IMM16:
-       case compiler::RuntimeInterface::IntrinsicId::WIDE_LDEXTERNALMODULEVAR_PREF_IMM16:
        case compiler::RuntimeInterface::IntrinsicId::CALLRUNTIME_LDLAZYMODULEVAR_PREF_IMM8:
        case compiler::RuntimeInterface::IntrinsicId::CALLRUNTIME_WIDELDLAZYMODULEVAR_PREF_IMM16:
-       case compiler::RuntimeInterface::IntrinsicId::CALLRUNTIME_LDSENDABLEEXTERNALMODULEVAR_PREF_IMM8:
-       case compiler::RuntimeInterface::IntrinsicId::CALLRUNTIME_WIDELDSENDABLEEXTERNALMODULEVAR_PREF_IMM16:
        case compiler::RuntimeInterface::IntrinsicId::CALLRUNTIME_LDLAZYSENDABLEMODULEVAR_PREF_IMM8:
        case compiler::RuntimeInterface::IntrinsicId::CALLRUNTIME_WIDELDLAZYSENDABLEMODULEVAR_PREF_IMM16:
        case compiler::RuntimeInterface::IntrinsicId::CALLRUNTIME_LDSENDABLELOCALMODULEVAR_PREF_IMM8:
@@ -1505,6 +1502,45 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
                 enc->SetExpressionByRegister(inst, inst->GetDstReg(), moudlevar);
             }else{
                 HandleError("#LDLOCALMODULEVAR: module slot not in localnamespaces_");
+            }
+
+            break;
+        }
+
+       // EXTERNAL module vars index the ImportEntries array (RegularImport then
+       // NamespaceImport) — a SEPARATE index space from local vars. Using
+       // localnamespaces_ here mis-bound base classes / API receivers (the
+       // wrong-`extends`/`promptAction->window` bug). Index importnamespaces_.
+       case compiler::RuntimeInterface::IntrinsicId::LDEXTERNALMODULEVAR_IMM8:
+       case compiler::RuntimeInterface::IntrinsicId::WIDE_LDEXTERNALMODULEVAR_PREF_IMM16:
+       case compiler::RuntimeInterface::IntrinsicId::CALLRUNTIME_LDSENDABLEEXTERNALMODULEVAR_PREF_IMM8:
+       case compiler::RuntimeInterface::IntrinsicId::CALLRUNTIME_WIDELDSENDABLEEXTERNALMODULEVAR_PREF_IMM16:
+       {
+            auto moudlevar_offset = static_cast<uint32_t>(inst->GetImms()[0]);
+            // LDEXTERNALMODULEVAR offset is MODULE-LOCAL (each module's
+            // ImportEntries start at 0). Look up the current function's module
+            // (its record name = fun_name_ minus the trailing .method) in the
+            // per-record import map. Falling back to the global flat list would
+            // mis-bind (the wrong-`extends`/API bug).
+            const std::vector<std::string>* implist = nullptr;
+            if(enc->recordimportnamespaces_ != nullptr){
+                std::string rec = enc->fun_name_;
+                auto dot = rec.find_last_of('.');
+                if(dot != std::string::npos) rec = rec.substr(0, dot);
+                auto it = enc->recordimportnamespaces_->find(rec);
+                if(it != enc->recordimportnamespaces_->end()){
+                    implist = &it->second;
+                }
+            }
+            if(implist == nullptr){
+                implist = &enc->importnamespaces_;  // fallback
+            }
+            if(moudlevar_offset < implist->size()){
+                auto moudlevar_rawname = (*implist)[moudlevar_offset];
+                panda::es2panda::ir::Identifier* moudlevar = enc->GetIdentifierByName(moudlevar_rawname);
+                enc->SetExpressionByRegister(inst, inst->GetDstReg(), moudlevar);
+            }else{
+                HandleError("#LDEXTERNALMODULEVAR: module slot not in importnamespaces_");
             }
 
             break;

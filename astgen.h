@@ -21,7 +21,9 @@ public:
         std::map<uint32_t, LexicalEnvStack*>* method2sendablelexicalenvstack, 
         std::map<uint32_t, std::string*> *patchvarspace,
         std::map<size_t, std::vector<std::string>> index2namespaces, std::vector<std::string> localnamespaces,
-        std::map<uint32_t, std::set<uint32_t>> *class2memberfuns, 
+        std::vector<std::string> importnamespaces,
+        std::map<std::string, std::vector<std::string>>* recordimportnamespaces,
+        std::map<uint32_t, std::set<uint32_t>> *class2memberfuns,
         std::map<uint32_t, panda::es2panda::ir::ScriptFunction *> *method2scriptfunast, 
         std::map<uint32_t, panda::es2panda::ir::ClassDeclaration *>* ctor2classdeclast, std::set<uint32_t> *memberfuncs, 
         std::map<uint32_t, panda::es2panda::ir::Expression*> *class2father, 
@@ -34,7 +36,7 @@ public:
         : compiler::Optimization(graph), function_(function), ir_interface_(iface), program_(prog), methodoffset_(methodoffset),
         method2lexicalenvstack_(method2lexicalenvstack), method2sendablelexicalenvstack_(method2sendablelexicalenvstack), 
         patchvarspace_(patchvarspace), parser_program_(parser_program), 
-        index2namespaces_(index2namespaces), localnamespaces_(localnamespaces), class2memberfuns_(class2memberfuns),
+        index2namespaces_(index2namespaces), localnamespaces_(localnamespaces), importnamespaces_(importnamespaces), recordimportnamespaces_(recordimportnamespaces), class2memberfuns_(class2memberfuns),
         method2scriptfunast_(method2scriptfunast), ctor2classdeclast_(ctor2classdeclast), memberfuncs_(memberfuncs), class2father_(class2father),
         method2lexicalmap_(method2lexicalmap), globallexical_waitlist_(globallexical_waitlist), globalsendablelexical_waitlist_(globalsendablelexical_waitlist), 
         raw2newname_(raw2newname), methodname2offset_(methodname2offset), fun_name_(fun_name)
@@ -833,6 +835,8 @@ public:
 
     std::map<size_t, std::vector<std::string>> index2namespaces_;
     std::vector<std::string> localnamespaces_;
+    std::vector<std::string> importnamespaces_;
+    std::map<std::string, std::vector<std::string>>* recordimportnamespaces_;
     std::map<uint32_t, std::set<uint32_t>> *class2memberfuns_;
     std::map<uint32_t, panda::es2panda::ir::ScriptFunction *> *method2scriptfunast_;
     std::map<uint32_t, panda::es2panda::ir::ClassDeclaration *>* ctor2classdeclast_;
