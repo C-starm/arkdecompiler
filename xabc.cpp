@@ -539,27 +539,24 @@ bool DecompilePandaFile(pandasm::Program *prog, BytecodeOptIrInterface *ir_inter
 
         panda_file::ClassDataAccessor cda {*pfile, record_id};
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        bool has_error = false;
-        cda.EnumerateMethods([prog, &has_error, &disasm, ir_interface, is_dynamic, &depedges, &class2memberfuns, &method2lexicalmap, &memberfuncs, &raw2newname, &methodname2offset, &skipfailfuns, &inserted_construct_order, &construct2initializer, &construct2staticinitializer, &construct2definedmethod](panda_file::MethodDataAccessor &mda){
+        cda.EnumerateMethods([prog, &disasm, ir_interface, is_dynamic, &depedges, &class2memberfuns, &method2lexicalmap, &memberfuncs, &raw2newname, &methodname2offset, &skipfailfuns, &inserted_construct_order, &construct2initializer, &construct2staticinitializer, &construct2definedmethod](panda_file::MethodDataAccessor &mda){
             if (!mda.IsExternal()) {
                 
                 int32_t res = ScanFunDep(prog, disasm, ir_interface, &depedges, &class2memberfuns, &method2lexicalmap, &memberfuncs, &raw2newname, &methodname2offset, mda, &inserted_construct_order, &construct2initializer, &construct2staticinitializer, &construct2definedmethod, is_dynamic);
-                if(res == 3 || res == 4){
+                // Any non-zero scan result means THIS function can't be analysed
+                // (1=not in table, 2=skipped, 3=IR build fail, 5=opt fail, 6=dep
+                // scan fail, 4=irreducible loop). Previously only 3/4 were skipped
+                // and the rest aborted the WHOLE file (return false → main exits 0
+                // with no output — e.g. kazumi's Flutter plugin classes produced
+                // zero output). Skip the one bad function and keep going instead.
+                if(res != 0){
                     skipfailfuns.insert(mda.GetMethodId().GetOffset());
                     return;
                 }
 
-                if(res != 0){
-                    has_error = true;
-                }
-
             }
         });
-        
-        if(has_error){
-            return false;
-        }
-    } 
+    }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     UpdateMemberDepConstructor(&inserted_construct_order, &class2memberfuns, &memberfuncs, &construct2initializer, &construct2staticinitializer, &construct2definedmethod, &depedges, offset2methodname);
