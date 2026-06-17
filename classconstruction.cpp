@@ -28,8 +28,9 @@ bool IsAnonymousClosure(std::string func_name){
     auto prefix = ExtractPrefix(func_name);
     size_t at = prefix.find('@');
     while (at != std::string::npos) {
-        // a '@' immediately followed by a digit is the lambda-index marker
-        if (at + 1 < prefix.size() && std::isdigit(static_cast<unsigned char>(prefix[at + 1]))) {
+        // a '@' immediately followed by a HEX digit is the lambda-index marker
+        // (markers are hex: @0..@9, @a..@f, e.g. "@e*" — isdigit alone misses a-f)
+        if (at + 1 < prefix.size() && std::isxdigit(static_cast<unsigned char>(prefix[at + 1]))) {
             // distinguish the class marker `@0>` (always present) from extra
             // `@N*` lambda markers: a closure has a '@<digit>' that is followed
             // later by '*' (the lambda suffix) rather than '>'.
@@ -115,29 +116,41 @@ bool ConstructClasses(std::map<uint32_t, std::set<uint32_t>> &class2memberfuns, 
             }
 
             auto func = method2scriptfunast[member_func_offset];
-            method2scriptfunast.erase(member_func_offset);
 
             if(func == nullptr){
-                // This member function has no AST because it was skipped during
-                // decompilation (unanalysable — e.g. IR-build failure, irreducible
-                // loop, or one of the skipfailfuns from the dep-scan pass). The
-                // class still lists it as a member. Rather than aborting the whole
-                // file, just omit this one method and keep building the class.
-                std::cout << "skip member function with no AST, offset: " << member_func_offset << std::endl;
+                // No AST (function was unanalysable / skipped). Leave it erased;
+                // nothing to emit. (erase below only on the success path so that
+                // entries we DON'T attach here remain in method2scriptfunast and
+                // get emitted as top-level functions by the caller — otherwise
+                // closures referenced as func_N would dangle, the #C tail.)
+                method2scriptfunast.erase(member_func_offset);
                 continue;
             }
-
-            auto funcExpr = AllocNode<es2panda::ir::FunctionExpression>(parser_program, func);
-
 
             auto raw_member_name  = RemoveArgumentsOfFunc(ir_interface->GetMethodIdByOffset(member_func_offset));
             std::string new_member_name;
             if(raw2newname.find(raw_member_name) != raw2newname.end()){
                 new_member_name =  raw2newname[raw_member_name];
             }else{
-                // No renamed identifier for this member — skip it rather than abort.
+                // No renamed identifier for this member — DON'T erase, so the
+                // top-level emit loop outputs its body as a function (matches the
+                // func_N reference). Skipping attach here, keeping the body.
                 continue;
             }
+
+            // Anonymous closures (synthesised func_N names — ArkUI build()
+            // closures, .filter/.map/.then callbacks) are referenced as FREE
+            // functions (observeComponentCreation2(func_N), list.filter(func_N)),
+            // NOT as `this.func_N`. Attaching them as class methods would leave
+            // those references dangling (the #C tail). Keep them top-level.
+            if(new_member_name.rfind("func_", 0) == 0){
+                continue;
+            }
+
+            // Successfully resolved as a real named class member — consume it from
+            // the top-level map and attach to the class.
+            method2scriptfunast.erase(member_func_offset);
+            auto funcExpr = AllocNode<es2panda::ir::FunctionExpression>(parser_program, func);
 
             panda::es2panda::util::StringView name_view3 = panda::es2panda::util::StringView(*(new std::string(new_member_name)));
             auto keyNode =  AllocNode<es2panda::ir::Identifier>(parser_program, name_view3);
