@@ -232,12 +232,14 @@ void LexicalEnvStack::Clear() {
 }
 
 void LexicalEnvStack::CheckIndex(size_t A, size_t B) const {
-    CheckStackIndex(A);
-    
-    size_t actualIndex = stack_.size() - 1 - A;
-    if (!stack_[actualIndex].IsValidIndex(B)) {
-        return;  // tolerated; accessors handle out-of-range
+    // Bounds-safe: bail BEFORE computing size-1-A (which underflows when the
+    // stack is empty or A is out of range) — must not deref past the end now
+    // that CheckStackIndex no longer aborts. (Validation-only; callers guard.)
+    if (stack_.empty() || A >= stack_.size()) {
+        return;
     }
+    size_t actualIndex = stack_.size() - 1 - A;
+    (void)stack_[actualIndex].IsValidIndex(B);
 }
 
 void LexicalEnvStack::CheckStackIndex(size_t A) const {
