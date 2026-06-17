@@ -4,6 +4,35 @@ void AstGen::VisitPhi(GraphVisitor* v, Inst* inst_base) {
     auto inst = inst_base->CastToPhi();
     ArenaVector<es2panda::ir::Expression *> arguments(enc->parser_program_->Allocator()->Adapter());
 
+    // Short-circuit boolean (a||b / a&&b): if this phi merges a condition
+    // block's own tested value with the value of the other (lazily-evaluated)
+    // operand, rebuild the logical expression instead of emitting two clobbering
+    // `dst = source` assignments (the unconditional second of which dropped the
+    // first operand, e.g. `a || b` decompiled to just `b`).
+    {
+        BasicBlock* condbb = nullptr;
+        size_t cond_idx = 0;
+        bool merge_on_truthy = false;
+        if(enc->DetectShortCircuitPhi(inst, &condbb, &cond_idx, &merge_on_truthy) &&
+           enc->shortcircuit_condblocks_.find(condbb) != enc->shortcircuit_condblocks_.end()){
+            size_t other_idx = 1 - cond_idx;
+            auto cond_expr  = *enc->GetExpressionByRegIndex(inst, cond_idx);
+            auto other_expr = *enc->GetExpressionByRegIndex(inst, other_idx);
+            // merge taken when cond is truthy  => short-circuit OR  (cond || other)
+            // merge taken when cond is falsy   => short-circuit AND (cond && other)
+            auto op = merge_on_truthy ? es2panda::lexer::TokenType::PUNCTUATOR_LOGICAL_OR
+                                      : es2panda::lexer::TokenType::PUNCTUATOR_LOGICAL_AND;
+            auto logical = AllocNode<es2panda::ir::BinaryExpression>(enc, cond_expr, other_expr, op);
+            // Bind the phi's value to the logical expression so its single user
+            // (return / further use) inlines it. Materialise only if multi-user.
+            enc->HandleNewCreatedExpression(inst, logical);
+            std::cout << "[short-circuit] phi " << inst->GetId()
+                      << (merge_on_truthy ? " => ||" : " => &&") << std::endl;
+            std::cout << "[-] VisitPhi  <<<<<<<<<<<<<<<" << std::endl;
+            return;
+        }
+    }
+
     auto dst_reg_identifier = enc->GetIdentifierByReg(inst->GetId());
     enc->SetExpressionByRegister(inst, inst->GetDstReg(), dst_reg_identifier);
 

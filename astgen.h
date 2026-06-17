@@ -587,6 +587,113 @@ public:
         return false;
     }
 
+    // Chase an IfImm/If tested instruction through transparent truthiness
+    // wrappers (callruntime.istrue / callruntime.isfalse) to the underlying
+    // condition value, and report whether an odd number of `isfalse` wrappers
+    // were crossed (which inverts truthy<->falsy).
+    Inst* UnwrapTruthiness(Inst* tested, bool* inverted){
+        *inverted = false;
+        Inst* cur = tested;
+        for(int guard = 0; cur != nullptr && guard < 8; ++guard){
+            if(!cur->IsIntrinsic()){
+                break;
+            }
+            auto iid = cur->CastToIntrinsic()->GetIntrinsicId();
+            if(iid == compiler::RuntimeInterface::IntrinsicId::CALLRUNTIME_ISTRUE_PREF_IMM8){
+                cur = cur->GetInput(0).GetInst();
+            }else if(iid == compiler::RuntimeInterface::IntrinsicId::CALLRUNTIME_ISFALSE_PREF_IMM8){
+                *inverted = !*inverted;
+                cur = cur->GetInput(0).GetInst();
+            }else{
+                break;
+            }
+        }
+        return cur;
+    }
+
+    // Detect the short-circuit (a||b / a&&b) shape at a phi.
+    //   - phi P has exactly 2 inputs.
+    //   - one input value `cond` comes from a predecessor `condbb` that ends in
+    //     IfImm, whose tested value (modulo istrue/isfalse) IS `cond`.
+    //   - the merge block (P's block) is a *direct* successor of condbb (the
+    //     short-circuit edge: cond's own truthiness is the merged result).
+    // On success fills condbb / cond_input_idx / merge_on_truthy and returns true.
+    bool DetectShortCircuitPhi(compiler::PhiInst* phi, BasicBlock** condbb_out,
+                               size_t* cond_idx_out, bool* merge_on_truthy_out){
+        if(phi->GetInputsCount() != 2){
+            return false;
+        }
+        BasicBlock* merge = phi->GetBasicBlock();
+        for(size_t i = 0; i < 2; ++i){
+            BasicBlock* condbb = phi->GetPhiInputBb(i);
+            if(condbb == nullptr){
+                continue;
+            }
+            Inst* last = condbb->GetLastInst();
+            if(last == nullptr || last->GetOpcode() != Opcode::IfImm){
+                continue;
+            }
+            // merge must be a direct successor of the condition block
+            if(condbb->GetTrueSuccessor() != merge && condbb->GetFalseSuccessor() != merge){
+                continue;
+            }
+            bool inverted = false;
+            Inst* base = UnwrapTruthiness(last->GetInput(0).GetInst(), &inverted);
+            Inst* condval = phi->GetInput(i).GetInst();
+            if(base != condval){
+                continue;
+            }
+            // The IfImm: imm 0, CC NE/EQ. Determine on which truthiness of the
+            // *tested* value control reaches `merge`, then undo any isfalse
+            // inversion to get the truthiness of `cond` itself.
+            auto ifimm = last->CastToIfImm();
+            bool merge_is_true_succ = (condbb->GetTrueSuccessor() == merge);
+            // CC_NE with imm 0: true successor taken when tested != 0 (truthy).
+            // CC_EQ with imm 0: true successor taken when tested == 0 (falsy).
+            bool true_succ_on_tested_truthy = (ifimm->GetCc() == compiler::CC_NE);
+            bool merge_on_tested_truthy =
+                merge_is_true_succ ? true_succ_on_tested_truthy : !true_succ_on_tested_truthy;
+            bool merge_on_cond_truthy = inverted ? !merge_on_tested_truthy : merge_on_tested_truthy;
+            *condbb_out = condbb;
+            *cond_idx_out = i;
+            *merge_on_truthy_out = merge_on_cond_truthy;
+            return true;
+        }
+        return false;
+    }
+
+    // Predicate form used at IfImm time: is `block` a short-circuit condition
+    // block? CRITICAL: this MUST agree exactly with DetectShortCircuitPhi — if
+    // VisitIfImm suppresses the `if` here but VisitPhi later fails to rebuild the
+    // logical expression, the branch vanishes with no fallback. So instead of a
+    // looser independent check, we require that a phi in a direct successor is
+    // *actually detected* by DetectShortCircuitPhi with THIS block as its condbb.
+    bool IsShortCircuitConditionBlock(BasicBlock* block){
+        if(block == nullptr){
+            return false;
+        }
+        Inst* last = block->GetLastInst();
+        if(last == nullptr || last->GetOpcode() != Opcode::IfImm){
+            return false;
+        }
+        for(auto* succ : {block->GetTrueSuccessor(), block->GetFalseSuccessor()}){
+            if(succ == nullptr){
+                continue;
+            }
+            for(auto* p : succ->PhiInsts()){
+                auto* phi = p->CastToPhi();
+                BasicBlock* condbb = nullptr;
+                size_t cond_idx = 0;
+                bool merge_on_truthy = false;
+                if(DetectShortCircuitPhi(phi, &condbb, &cond_idx, &merge_on_truthy) &&
+                   condbb == block){
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     std::optional<std::string> GetNameFromExpression(es2panda::ir::Expression* rawexpression){
         if(rawexpression->IsIdentifier()){
             auto objname = rawexpression->AsIdentifier()->Name().Mutf8();
@@ -881,6 +988,14 @@ public:
     std::map<compiler::BasicBlock*, es2panda::ir::BlockStatement*> whilebody2redundant;
 
     std::map<compiler::BasicBlock*, es2panda::ir::BlockStatement*> phiref2pendingredundant;
+
+    // Short-circuit boolean reconstruction (a||b / a&&b). When a condition block
+    // feeds its own tested value into a phi at a direct-successor merge block, the
+    // diamond CFG is really a logical expression, not an if-statement. We collect
+    // such condition blocks so VisitIfImm skips emitting an `if`, and the phi at
+    // the merge rebuilds `cond || other` / `cond && other` instead of two
+    // clobbering temp assignments (which dropped the first operand entirely).
+    std::set<compiler::BasicBlock*> shortcircuit_condblocks_;
 
     std::map<uint32_t, es2panda::ir::BlockStatement*> id2block;
 

@@ -373,16 +373,21 @@ uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
 
 panda::es2panda::ir::Expression* AstGen::InverseTestExpression(AstGen *enc, Inst* inst_base, uint32_t ret, panda::es2panda::ir::Expression* src_expression, bool swap_truefalse){
     [[maybe_unused]] auto inst = inst_base->CastToIfImm();
-    auto new_src_expression = src_expression->AsBinaryExpression();
-    auto raw_opeator = new_src_expression->OperatorType();
+    auto src_binary = src_expression->AsBinaryExpression();
+    auto raw_opeator = src_binary->OperatorType();
     auto new_operator = BinInverseToken2Token(raw_opeator);
 
     if(raw_opeator != new_operator){
-        if(swap_truefalse == false && inst->GetCc() == compiler::CC_EQ){
-            new_src_expression->SetOperator(new_operator);
-            return new_src_expression;
-        }else if(swap_truefalse == true && inst->GetCc() == compiler::CC_NE){
-            new_src_expression->SetOperator(new_operator);
+        // The compare instruction can have MORE THAN ONE user (e.g. it also feeds
+        // a short-circuit phi). Inverting the operator IN PLACE would corrupt
+        // every other use (turning `a === b` into `a !== b` at the phi too).
+        // Build a fresh inverted node and leave the shared original untouched.
+        if((swap_truefalse == false && inst->GetCc() == compiler::CC_EQ) ||
+           (swap_truefalse == true  && inst->GetCc() == compiler::CC_NE)){
+            auto new_src_expression = AllocNode<es2panda::ir::BinaryExpression>(enc,
+                                                        src_binary->Left(),
+                                                        src_binary->Right(),
+                                                        new_operator);
             return new_src_expression;
         }else{
             return src_expression;
@@ -403,7 +408,7 @@ panda::es2panda::ir::Expression* AstGen::InverseTestExpression(AstGen *enc, Inst
             }       
         }
 
-        new_src_expression = AllocNode<es2panda::ir::BinaryExpression>(enc,
+        auto new_src_expression = AllocNode<es2panda::ir::BinaryExpression>(enc,
                                                     src_expression,
                                                     enc->constant_zero,
                                                     BinIntrinsicIdToToken(cmpid));
@@ -432,6 +437,22 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
     auto imm = inst->GetImm();
     auto block = inst->GetBasicBlock();
     panda::es2panda::ir::Expression* test_expression;
+
+    // Short-circuit boolean (a||b / a&&b): this branch is not real control flow,
+    // it is the evaluation of a logical operator whose result is merged by a phi
+    // at the successor. Do NOT emit an `if` — the merge phi rebuilds the logical
+    // expression. The tested compare's expression is already bound in
+    // id2expression, so the phi can read it. Skip loop headers (genuine loops).
+    if (imm == 0 && !IsLoopBranch(enc, block) &&
+        enc->backedge2dowhileloop.find(block) == enc->backedge2dowhileloop.end() &&
+        !(block->IsLoopValid() && block->IsLoopHeader()) &&
+        enc->IsShortCircuitConditionBlock(block)) {
+        enc->shortcircuit_condblocks_.insert(block);
+        std::cout << "[short-circuit] skip if for bb " << block->GetId() << std::endl;
+        std::cout << "[-] VisitIfImm  >>>>>>>>>>>>>>>>>" << std::endl;
+        return;
+    }
+
     if (imm == 0) {
         auto src_expression = *enc->GetExpressionByRegIndex(inst, 0);
 
