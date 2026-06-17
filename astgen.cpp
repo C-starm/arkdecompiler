@@ -150,7 +150,7 @@ void AstGen::VisitSpillFill(GraphVisitor *visitor, Inst *inst_base)
 
     for (auto sf : inst->GetSpillFills()) {
         if(sf.SrcType() != compiler::LocationType::REGISTER || sf.DstType() != compiler::LocationType::REGISTER ){
-            HandleError("VisitSpillFill # unsupoort SpillFill type");
+            return; // skip unsupported SpillFill type
         }
         auto it = enc->reg2expression.find(sf.SrcValue());
         if (it == enc->reg2expression.end()) {
@@ -305,7 +305,7 @@ uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
     }else if(true_branch->GetPredsBlocks().size() == 1 && false_branch->GetPredsBlocks().size() == 1){
         return 0;
     }else{
-        HandleError("onlyOneBranch# not consider this case");
+        return 0; // unhandled branch shape -> sentinel
     }
 
     BasicBlock* other_father = nullptr;
@@ -365,7 +365,7 @@ uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
         return 0;
     }else{
         //std::cout << "end other_father: " << std::to_string(other_father->GetId()) << std::endl;
-        HandleError("onlyOneBranch# found method is bad");
+        return 0; // bad method -> sentinel
     }
     
     return 0;
@@ -646,7 +646,7 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
         //true_statements->SetParent(block);
         //false_statements->SetParent(block);
     }else{
-        HandleError("#VisitIfImm: unhandle case");
+        return; // skip unhandled if-imm case
     }
     std::cout << "[-] VisitIfImm  >>>>>>>>>>>>>>>>>" << std::endl;
 }

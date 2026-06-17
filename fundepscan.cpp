@@ -182,7 +182,7 @@ void FunDepScan::VisitEcma(panda::compiler::GraphVisitor *visitor, Inst *inst_ba
                     (*enc->class2memberfuns_)[enc->current_constructor_offset].insert(memeber_offset);
                 }
             }else{
-                HandleError("#function dep scan: CALLRUNTIME_CREATEPRIVATEPROPERTY");
+                // literal array not found — skip (non-fatal); was HandleError.
             }
             break;
         }

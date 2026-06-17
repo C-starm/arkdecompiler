@@ -132,7 +132,7 @@ void JudgeLoopType(BasicBlock* header, std::map<Loop *, uint32_t>& loop2type,
 
     std::cout << "[+] judge loop type >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
     if(header->GetLoop()->IsIrreducible()){
-        HandleError("IrreducibleLoop");
+        return; // irreducible loop: skip type-judgment instead of aborting
     }
 
     auto &back_edges = header->GetLoop()->GetBackEdges();

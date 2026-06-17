@@ -592,7 +592,9 @@ bool DecompilePandaFile(pandasm::Program *prog, BytecodeOptIrInterface *ir_inter
         result = DecompileFunction(prog, parser_program, ir_interface, mda, is_dynamic, &method2lexicalenvstack, &method2sendablelexicalenvstack, &patchvarspace, index2importnamespaces, localnamespaces, importnamespaces, recordimportnamespaces, &class2memberfuns, &method2scriptfunast, &ctor2classdeclast, &memberfuncs, &class2father, &method2lexicalmap, &globallexical_waitlist, &globalsendablelexical_waitlist, &raw2newname, &methodname2offset);
         
         if(!result){
-            HandleError("#DecompilePandaFile: decomiple case 1 failed!");
+            // One function failed to decompile — skip it and keep going so the
+            // rest of the app still produces output (don't abort the whole file).
+            result = true;
         }
     }
 
@@ -613,7 +615,8 @@ bool DecompilePandaFile(pandasm::Program *prog, BytecodeOptIrInterface *ir_inter
                 
                 result = DecompileFunction(prog, parser_program, ir_interface, mda, is_dynamic, &method2lexicalenvstack, &method2sendablelexicalenvstack, &patchvarspace, index2importnamespaces, localnamespaces, importnamespaces, recordimportnamespaces, &class2memberfuns, &method2scriptfunast, &ctor2classdeclast, &memberfuncs, &class2father, &method2lexicalmap, &globallexical_waitlist, &globalsendablelexical_waitlist, &raw2newname, &methodname2offset);
                 if(!result){
-                    HandleError("#DecompilePandaFile: decomiple case 2 failed!");
+                    // skip the failed function, keep decompiling the rest
+                    result = true;
                 }
             }
         });

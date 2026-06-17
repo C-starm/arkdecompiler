@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "algos.h"
 #include "base.h"
 
@@ -100,9 +101,15 @@ std::vector<uint32_t> TopologicalSort(const std::vector<std::pair<uint32_t, uint
     }
     
     if (result.size() != allNodes.size()) {
-        HandleError("#TopologicalSort: search failed");
-        return {}; 
+        // Dependency cycle — append the un-sorted nodes (in any order) and return
+        // the best-effort order instead of aborting / returning empty, so the
+        // rest of the file still decompiles.
+        for (uint32_t n : allNodes) {
+            if (std::find(result.begin(), result.end(), n) == result.end()) {
+                result.push_back(n);
+            }
+        }
     }
-    
+
     return result;
 }

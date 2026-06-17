@@ -62,7 +62,7 @@ void AstGen::VisitTry(GraphVisitor* v, Inst* inst_base) {
     }else if(inst->GetBasicBlock()->GetSuccessor(1)->IsCatchBegin()){
         tryblock = inst->GetBasicBlock()->GetSuccessor(0);
     }else{
-        HandleError("can't handle this case  in visitTry for finding try block");
+        tryblock = inst->GetBasicBlock()->GetSuccessor(0); // fallback, don't abort
     }
 
     enc->specialblockid.insert(tryblock->GetId());

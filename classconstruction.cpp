@@ -63,7 +63,9 @@ bool ConstructClasses(std::map<uint32_t, std::set<uint32_t>> &class2memberfuns, 
         if(raw2newname.find(constructor_offset_name) != raw2newname.end()){
             newname_constructor_offset_name =  raw2newname[constructor_offset_name];
         }else{
-            HandleError("#ConstructClasses: find constructor_offset_name newname error");
+            // No renamed identifier — fall back to the raw constructor name
+            // instead of aborting the whole decompile.
+            newname_constructor_offset_name = constructor_offset_name;
         }
         panda::es2panda::util::StringView name_view1 = panda::es2panda::util::StringView(*(new std::string(RemoveArgumentsOfFunc(newname_constructor_offset_name))));
 
