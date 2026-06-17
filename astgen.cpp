@@ -281,6 +281,8 @@ void AstGen::VisitIf(GraphVisitor *v, Inst *inst_base)
     std::cout << "[-] VisitIf  >>>>>>>>>>>>>>>>>" << std::endl;
 }
 
+bool IsLoopBranch(AstGen *enc, BasicBlock *block);  // defined below
+
 uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
     //std::cout << "if block: " << std::to_string(father->GetId()) << std::endl;
     auto true_branch = father->GetTrueSuccessor();
@@ -306,6 +308,35 @@ uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
         return 0;
     }else{
         return 0; // unhandled branch shape -> sentinel
+    }
+
+    // If `father` does not dominate the join candidate, that join belongs to an
+    // OUTER scope (it is reachable without going through this if). It must NOT be
+    // pulled into this if as a branch body — doing so duplicates the merge/tail
+    // into every predecessor and drops it from the non-dominated path (the
+    // missing-else / triplicated-tail bug). Emit only the successor this if
+    // actually dominates; the join is emitted later at its own dominator.
+    //
+    // BUT: only when the candidate is a genuine *continuation* join. A block that
+    // TERMINATES (ends in return/throw) is a branch body, never a post-construct
+    // join — e.g. `if (a || b) { return false; }` lowers to two conditions whose
+    // taken edges share one return block; that return block is the else of the
+    // enclosing if and must stay nested, not be hoisted as fall-through.
+    // Loop-condition / break branches are left to the existing loop handling
+    // (VisitIfImm forces ret=0 for IsLoopBranch blocks), so skip those here.
+    // NB: async functions appear wholly "loop valid" (generator-resume loop), so
+    // we must NOT skip on IsLoopValid alone — use the precise IsLoopBranch.
+    if(!father->IsDominate(analysis_block) &&
+       !enc->BlockTerminates(analysis_block) &&
+       !IsLoopBranch(enc, father) &&
+       !(father->IsLoopValid() && father->IsLoopHeader())){
+        if(analysis_block == true_branch){
+            // true successor is the outer join -> only the (dominated) else body
+            return 2;
+        }else{
+            // false successor is the outer join -> only the (dominated) if body
+            return 1;
+        }
     }
 
     BasicBlock* other_father = nullptr;
@@ -522,10 +553,27 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
                 std::cout << "#VisitIfImm ret case: " << ret << std::endl;
                 enc->specialblockid.insert(block->GetTrueSuccessor()->GetId());
                 true_statements =   enc->GetBlockStatementById(block->GetTrueSuccessor());
+                // Symmetric to the ret==2 case below: if the dropped FALSE
+                // successor terminates (return/throw), keep it as the explicit
+                // else body instead of letting it be mis-placed.
+                if(enc->BlockTerminates(block->GetFalseSuccessor())){
+                    enc->specialblockid.insert(block->GetFalseSuccessor()->GetId());
+                    false_statements = enc->GetBlockStatementById(block->GetFalseSuccessor());
+                }
             }else{
                 std::cout << "#VisitIfImm ret case: " << ret << std::endl;
                 enc->specialblockid.insert(block->GetFalseSuccessor()->GetId());
                 false_statements =   enc->GetBlockStatementById(block->GetFalseSuccessor());
+                // ret==2 normally drops the true successor (treated as post-if
+                // continuation, placed later at its dominator). But if the true
+                // successor TERMINATES (return/throw) it is the if's else body
+                // (e.g. `if(a||b){return false}` second condition: both jump to
+                // the same return block). Capture it as the explicit else so it
+                // stays nested and is not dropped from the `a===true` path.
+                if(enc->BlockTerminates(block->GetTrueSuccessor())){
+                    enc->specialblockid.insert(block->GetTrueSuccessor()->GetId());
+                    true_statements = enc->GetBlockStatementById(block->GetTrueSuccessor());
+                }
             }
         /////////////////////////////////////////////////////////////////////////////////////////////////
         /////////////////////////////////////////////////////////////////////////////////////////////////

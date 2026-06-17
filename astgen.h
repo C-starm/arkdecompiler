@@ -611,6 +611,26 @@ public:
         return cur;
     }
 
+    // Does this block terminate control flow (end in return / throw)? Such a
+    // block is always a branch body, never a post-construct continuation join.
+    bool BlockTerminates(BasicBlock* block){
+        if(block == nullptr){
+            return false;
+        }
+        for(auto* inst : block->Insts()){
+            if(!inst->IsIntrinsic()){
+                continue;
+            }
+            auto iid = inst->CastToIntrinsic()->GetIntrinsicId();
+            if(iid == compiler::RuntimeInterface::IntrinsicId::RETURN ||
+               iid == compiler::RuntimeInterface::IntrinsicId::RETURNUNDEFINED ||
+               iid == compiler::RuntimeInterface::IntrinsicId::THROW_PREF_NONE){
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Detect the short-circuit (a||b / a&&b) shape at a phi.
     //   - phi P has exactly 2 inputs.
     //   - one input value `cond` comes from a predecessor `condbb` that ends in
