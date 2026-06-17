@@ -318,16 +318,22 @@ uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
     // actually dominates; the join is emitted later at its own dominator.
     //
     // BUT: only when the candidate is a genuine *continuation* join. A block that
-    // TERMINATES (ends in return/throw) is a branch body, never a post-construct
-    // join — e.g. `if (a || b) { return false; }` lowers to two conditions whose
-    // taken edges share one return block; that return block is the else of the
-    // enclosing if and must stay nested, not be hoisted as fall-through.
+    // TERMINATES (ends in return/throw) AND has no phi is a pure branch body,
+    // never a post-construct join — e.g. `if (a || b) { return false; }` lowers
+    // to two conditions whose taken edges share one return block; that return
+    // block is the else of the enclosing if and must stay nested, not hoisted.
+    // A terminating block that HAS a phi is still a value-merge continuation
+    // (e.g. `let s=...; if(a && b){s+=x} ...; return s` where the `&&` lowers to
+    // nested ifs and the return-merge has >1 pred): it must be hoisted, else the
+    // tail+return gets buried in one branch and the other paths return undefined.
     // Loop-condition / break branches are left to the existing loop handling
     // (VisitIfImm forces ret=0 for IsLoopBranch blocks), so skip those here.
     // NB: async functions appear wholly "loop valid" (generator-resume loop), so
     // we must NOT skip on IsLoopValid alone — use the precise IsLoopBranch.
+    bool candidate_is_pure_branch_body =
+        enc->BlockTerminates(analysis_block) && !enc->BlockHasPhi(analysis_block);
     if(!father->IsDominate(analysis_block) &&
-       !enc->BlockTerminates(analysis_block) &&
+       !candidate_is_pure_branch_body &&
        !IsLoopBranch(enc, father) &&
        !(father->IsLoopValid() && father->IsLoopHeader())){
         if(analysis_block == true_branch){
@@ -554,9 +560,12 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
                 enc->specialblockid.insert(block->GetTrueSuccessor()->GetId());
                 true_statements =   enc->GetBlockStatementById(block->GetTrueSuccessor());
                 // Symmetric to the ret==2 case below: if the dropped FALSE
-                // successor terminates (return/throw), keep it as the explicit
-                // else body instead of letting it be mis-placed.
-                if(enc->BlockTerminates(block->GetFalseSuccessor())){
+                // successor terminates (return/throw) AND is a pure branch body
+                // (no phi — a phi means it's a value-merge continuation, which
+                // must stay after the if, not become the else), keep it as the
+                // explicit else body instead of letting it be mis-placed.
+                if(enc->BlockTerminates(block->GetFalseSuccessor()) &&
+                   !enc->BlockHasPhi(block->GetFalseSuccessor())){
                     enc->specialblockid.insert(block->GetFalseSuccessor()->GetId());
                     false_statements = enc->GetBlockStatementById(block->GetFalseSuccessor());
                 }
@@ -570,7 +579,11 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
                 // (e.g. `if(a||b){return false}` second condition: both jump to
                 // the same return block). Capture it as the explicit else so it
                 // stays nested and is not dropped from the `a===true` path.
-                if(enc->BlockTerminates(block->GetTrueSuccessor())){
+                // Skip if the block has a phi: that makes it a value-merge
+                // continuation (e.g. `let s=x; if(c){s=y} return s`), which must
+                // be emitted AFTER the if, not captured as the else.
+                if(enc->BlockTerminates(block->GetTrueSuccessor()) &&
+                   !enc->BlockHasPhi(block->GetTrueSuccessor())){
                     enc->specialblockid.insert(block->GetTrueSuccessor()->GetId());
                     true_statements = enc->GetBlockStatementById(block->GetTrueSuccessor());
                 }
@@ -706,6 +719,7 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
 
             if(true_statements != nullptr){
                 enc->AddInstAst2BlockStatemntByInst(inst, ifStatement);
+                enc->block2ifstatement_[block] = ifStatement;
             }
             std::cout << "[-] if ===" << std::endl;
 

@@ -47,7 +47,41 @@ void AstGen::VisitPhi(GraphVisitor* v, Inst* inst_base) {
         auto assignstatement = AllocNode<es2panda::ir::ExpressionStatement>(enc, assignexpression);
 
         if(std::find(enc->visited.begin(), enc->visited.end(), bb) != enc->visited.end()){
-            enc->AddInstAst2BlockStatemntByBlock(bb, assignstatement);
+            // If this phi edge comes from a block that ends in an IfImm, it is the
+            // condition block's DEFAULT (fall-through) value — the other phi
+            // edge(s) are the if's branch bodies. Source idiom:
+            //   let dst = <default>; if (cond) { dst = <branch> }
+            // Emitting `dst = default` at the END of the condition block places it
+            // AFTER the `if`, unconditionally clobbering the branch assignment
+            // (the dead-store bug, e.g. `if(s.endsWith('/')){s=s.slice(0,-1)} s=s;`
+            // — the trim is lost). Instead insert it BEFORE the if so it acts as
+            // the default that the branch conditionally overrides.
+            Inst* last = bb->GetLastInst();
+            auto if_it = enc->block2ifstatement_.find(bb);
+            if(last != nullptr && last->GetOpcode() == Opcode::IfImm &&
+               if_it != enc->block2ifstatement_.end()){
+                // This phi edge comes from a condition block — it is the DEFAULT
+                // (fall-through) value the if's branch conditionally overrides.
+                // Source idiom: `let dst = <default>; if (cond) { dst = <branch> }`.
+                // Insert it right BEFORE THIS block's matching IfStatement, so it
+                // is not appended AFTER the if where it would unconditionally
+                // clobber the branch assignment (the dead-store bug).
+                auto* blkstmt = enc->GetBlockStatementById(bb);
+                const auto& stmts = blkstmt->Statements();
+                size_t pos = stmts.size();
+                for(size_t k = 0; k < stmts.size(); ++k){
+                    if(stmts[k] == if_it->second){
+                        pos = k;
+                        break;
+                    }
+                }
+                if(enc->inserted_statements.find(assignstatement) == enc->inserted_statements.end()){
+                    enc->inserted_statements.insert(assignstatement);
+                    blkstmt->AddStatementAtPos(pos, assignstatement);
+                }
+            }else{
+                enc->AddInstAst2BlockStatemntByBlock(bb, assignstatement);
+            }
         }else{
             if(enc->phiref2pendingredundant.find(bb) != enc->phiref2pendingredundant.end()){
                 auto found_block_statement = enc->phiref2pendingredundant[bb];

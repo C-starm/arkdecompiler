@@ -613,6 +613,18 @@ public:
 
     // Does this block terminate control flow (end in return / throw)? Such a
     // block is always a branch body, never a post-construct continuation join.
+    // Does this block start with a Phi? A phi means the block is a value-merge
+    // (a continuation join), not a pure branch body — even if it also returns.
+    bool BlockHasPhi(BasicBlock* block){
+        if(block == nullptr){
+            return false;
+        }
+        for([[maybe_unused]] auto* p : block->PhiInsts()){
+            return true;
+        }
+        return false;
+    }
+
     bool BlockTerminates(BasicBlock* block){
         if(block == nullptr){
             return false;
@@ -1016,6 +1028,11 @@ public:
     // the merge rebuilds `cond || other` / `cond && other` instead of two
     // clobbering temp assignments (which dropped the first operand entirely).
     std::set<compiler::BasicBlock*> shortcircuit_condblocks_;
+
+    // The IfStatement emitted for each condition block, so a phi's default
+    // (fall-through) edge can be inserted right before THE matching if (not just
+    // the first if in a possibly-aliased/shared block statement).
+    std::map<compiler::BasicBlock*, es2panda::ir::IfStatement*> block2ifstatement_;
 
     std::map<uint32_t, es2panda::ir::BlockStatement*> id2block;
 
