@@ -354,6 +354,26 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
             break;
         }
 
+        case AstNodeType::CONDITIONAL_EXPRESSION:{
+            std::cout << "enter CONDITIONAL_EXPRESSION >>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+            auto conditionalexpression = node->AsConditionalExpression();
+            // Parenthesize: a ternary has very low precedence, so when it appears
+            // as a sub-expression (e.g. `a + (c ? x : y)`) it must be wrapped or
+            // it re-binds (`(a + c) ? x : y`).
+            ss_ << "(";
+            this->EmitExpression(conditionalexpression->Test());
+            WriteSpace();
+            ss_ << "?";
+            WriteSpace();
+            this->EmitExpression(conditionalexpression->Consequent());
+            WriteSpace();
+            ss_ << ":";
+            WriteSpace();
+            this->EmitExpression(conditionalexpression->Alternate());
+            ss_ << ")";
+            break;
+        }
+
         default:
             HandleError("#EmitExpression : unsupport expression");;
 

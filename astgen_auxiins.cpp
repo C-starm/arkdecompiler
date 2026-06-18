@@ -33,6 +33,22 @@ void AstGen::VisitPhi(GraphVisitor* v, Inst* inst_base) {
         }
     }
 
+    // Value-select ternary (cond ? X : Y): a 2-input phi whose default edge Y is
+    // reached only via if-FALSE paths and whose value edge X is the deep result.
+    // Rebuild it as a ConditionalExpression bound to the phi, so the default is
+    // never emitted as an unconditional `dst = Y` that clobbers the X branch
+    // (e.g. `A && B ? s.longToken : ''` decompiling to always `''`). Pure
+    // expression (like the short-circuit case) — no statement-placement conflict.
+    {
+        auto* ternary = enc->TryBuildValueSelectTernary(inst);
+        if(ternary != nullptr){
+            enc->HandleNewCreatedExpression(inst, ternary);
+            std::cout << "[value-ternary] phi " << inst->GetId() << " => cond ? X : Y" << std::endl;
+            std::cout << "[-] VisitPhi  <<<<<<<<<<<<<<<" << std::endl;
+            return;
+        }
+    }
+
     auto dst_reg_identifier = enc->GetIdentifierByReg(inst->GetId());
     enc->SetExpressionByRegister(inst, inst->GetDstReg(), dst_reg_identifier);
 

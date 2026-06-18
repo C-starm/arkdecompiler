@@ -493,6 +493,25 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
     if (imm == 0) {
         auto src_expression = *enc->GetExpressionByRegIndex(inst, 0);
 
+        // Remember the SEMANTIC condition expression (unwrapping istrue/isfalse)
+        // so a value-select ternary whose value merges at a downstream phi can
+        // rebuild its path condition (A && B ? X : Y) with correct polarity. The
+        // IfImm operand may be `isfalse(A)`/`istrue(A)`; we want `A`'s expression.
+        {
+            bool inv_unused = false;
+            Inst* base = enc->UnwrapTruthiness(inst->GetInput(0).GetInst(), &inv_unused);
+            es2panda::ir::Expression* cond_expr = src_expression;
+            if(base != nullptr){
+                auto it = enc->id2expression.find(base->GetId());
+                if(it != enc->id2expression.end() && it->second != nullptr){
+                    cond_expr = it->second;
+                }
+            }
+            if(cond_expr != nullptr){
+                enc->block2rawtest_[block] = cond_expr;
+            }
+        }
+
         auto ret = onlyOneBranch(inst->GetBasicBlock(), enc);
 
         es2panda::ir::Statement* true_statements = nullptr;

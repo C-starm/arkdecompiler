@@ -625,6 +625,159 @@ public:
         return false;
     }
 
+    // Does control go from IfImm block `C` to `succ` when C's SEMANTIC condition
+    // is TRUE? Accounts for the istrue/isfalse wrapper parity + CC + which
+    // (true/false) successor `succ` is. Returns false if not determinable.
+    bool EdgeTakenOnConditionTrue(BasicBlock* C, BasicBlock* succ){
+        Inst* last = C->GetLastInst();
+        if(last == nullptr || last->GetOpcode() != Opcode::IfImm){
+            return false;
+        }
+        auto* ifimm = last->CastToIfImm();
+        bool inverted = false;
+        UnwrapTruthiness(last->GetInput(0).GetInst(), &inverted);
+        bool true_succ_on_tested_truthy = (ifimm->GetCc() == compiler::CC_NE);
+        bool succ_is_true = (C->GetTrueSuccessor() == succ);
+        bool succ_on_tested_truthy =
+            succ_is_true ? true_succ_on_tested_truthy : !true_succ_on_tested_truthy;
+        // undo isfalse parity -> truthiness of the underlying (semantic) condition
+        return inverted ? !succ_on_tested_truthy : succ_on_tested_truthy;
+    }
+
+    // Is `block` a pure DEFAULT merge reached only via SEMANTICALLY-FALSE edges?
+    // This is the `Y` of an `A && B ? X : Y` ternary: every predecessor is an
+    // IfImm and control reaches `block` exactly when that predecessor's condition
+    // is FALSE (a condition failed -> default). istrue/isfalse aware.
+    bool IsDefaultMergeOfFalseEdges(BasicBlock* block){
+        if(block == nullptr || block->GetPredsBlocks().empty()){
+            return false;
+        }
+        for(auto* pred : block->GetPredsBlocks()){
+            Inst* last = pred->GetLastInst();
+            if(last == nullptr || last->GetOpcode() != Opcode::IfImm){
+                return false;
+            }
+            if(EdgeTakenOnConditionTrue(pred, block)){
+                return false;  // reached when condition TRUE -> not a default edge
+            }
+        }
+        return true;
+    }
+
+    // Build the boolean expression true when control leaves IfImm block `C`
+    // toward successor `succ` (resolving istrue/isfalse parity + CC + which
+    // successor). nullptr if not buildable.
+    es2panda::ir::Expression* BuildBranchCondition(BasicBlock* C, BasicBlock* succ){
+        if(C == nullptr || succ == nullptr){
+            return nullptr;
+        }
+        auto it = this->block2rawtest_.find(C);
+        if(it == this->block2rawtest_.end() || it->second == nullptr){
+            return nullptr;
+        }
+        Inst* last = C->GetLastInst();
+        if(last == nullptr || last->GetOpcode() != Opcode::IfImm){
+            return nullptr;
+        }
+        auto* ifimm = last->CastToIfImm();
+        bool inverted = false;
+        UnwrapTruthiness(last->GetInput(0).GetInst(), &inverted);
+        bool true_succ_on_tested_truthy = (ifimm->GetCc() == compiler::CC_NE);
+        bool succ_is_true = (C->GetTrueSuccessor() == succ);
+        bool succ_on_tested_truthy =
+            succ_is_true ? true_succ_on_tested_truthy : !true_succ_on_tested_truthy;
+        bool succ_on_raw_truthy = inverted ? !succ_on_tested_truthy : succ_on_tested_truthy;
+        es2panda::ir::Expression* raw = it->second;
+        if(succ_on_raw_truthy){
+            return raw;
+        }
+        return AllocNode<es2panda::ir::UnaryExpression>(
+            this, raw, es2panda::lexer::TokenType::PUNCTUATOR_EXCLAMATION_MARK);
+    }
+
+    // Detect a value-select ternary `cond ? X : Y` whose value merges at `phi`
+    // (default Y reached only via if-FALSE edges; value X reached when all path
+    // conditions hold). Builds a ConditionalExpression. nullptr if not this shape.
+    es2panda::ir::Expression* TryBuildValueSelectTernary(compiler::PhiInst* phi){
+        if(phi->GetInputsCount() != 2){
+            return nullptr;
+        }
+        BasicBlock* merge = phi->GetBasicBlock();
+        BasicBlock* dom = merge->GetDominator();
+        if(dom == nullptr || dom->GetLastInst() == nullptr ||
+           dom->GetLastInst()->GetOpcode() != Opcode::IfImm){
+            return nullptr;
+        }
+        BasicBlock* b0 = phi->GetPhiInputBb(0);
+        BasicBlock* b1 = phi->GetPhiInputBb(1);
+        if(b0 == nullptr || b1 == nullptr){
+            return nullptr;
+        }
+        // The DEFAULT (Y) is the shallow merge of if-FALSE edges; the VALUE (X) is
+        // the deeper block (dominated by more conditions). A `&&`-chain false-merge
+        // (e.g. bb3 reached via bb2's false edge) can also look like a false-edge
+        // merge, so disambiguate by dominance: X is dominated by Y's block region,
+        // i.e. X is the one with the longer dominator chain. Require exactly one
+        // side to be the false-edge default.
+        bool b0_def = IsDefaultMergeOfFalseEdges(b0);
+        bool b1_def = IsDefaultMergeOfFalseEdges(b1);
+        int y_idx = -1;
+        if(b0_def && !b1_def){
+            y_idx = 0;
+        }else if(b1_def && !b0_def){
+            y_idx = 1;
+        }else if(b0_def && b1_def){
+            // both look like false-merges: Y is the one with MORE predecessors
+            // (the genuine multi-edge fail-merge); X is the deeper single-pred one.
+            if(b0->GetPredsBlocks().size() != b1->GetPredsBlocks().size()){
+                y_idx = (b0->GetPredsBlocks().size() > b1->GetPredsBlocks().size()) ? 0 : 1;
+            }else{
+                return nullptr; // ambiguous
+            }
+        }
+        if(y_idx < 0){
+            return nullptr;
+        }
+        size_t x_idx = 1 - (size_t)y_idx;
+        BasicBlock* xbb = phi->GetPhiInputBb(x_idx);
+        if(xbb == nullptr || !dom->IsDominate(xbb)){
+            return nullptr;
+        }
+        // Walk dominator chain from xbb up to dom, collecting the branch condition
+        // at each IfImm toward the side that leads to xbb.
+        std::vector<es2panda::ir::Expression*> conds;
+        BasicBlock* cur = xbb;
+        int guard = 0;
+        while(cur != nullptr && guard++ < 64){
+            BasicBlock* d = cur->GetDominator();
+            if(d == nullptr){
+                return nullptr;
+            }
+            if(d->GetLastInst() != nullptr && d->GetLastInst()->GetOpcode() == Opcode::IfImm){
+                auto* c = BuildBranchCondition(d, cur);
+                if(c == nullptr){
+                    return nullptr;
+                }
+                conds.push_back(c);
+            }
+            if(d == dom){
+                break;
+            }
+            cur = d;
+        }
+        if(conds.empty()){
+            return nullptr;
+        }
+        es2panda::ir::Expression* cond = conds[0];
+        for(size_t i = 1; i < conds.size(); ++i){
+            cond = AllocNode<es2panda::ir::BinaryExpression>(
+                this, conds[i], cond, es2panda::lexer::TokenType::PUNCTUATOR_LOGICAL_AND);
+        }
+        auto xexpr = *GetExpressionByRegIndex(phi, x_idx);
+        auto yexpr = *GetExpressionByRegIndex(phi, (size_t)y_idx);
+        return AllocNode<es2panda::ir::ConditionalExpression>(this, cond, xexpr, yexpr);
+    }
+
     bool BlockTerminates(BasicBlock* block){
         if(block == nullptr){
             return false;
@@ -1033,6 +1186,10 @@ public:
     // (fall-through) edge can be inserted right before THE matching if (not just
     // the first if in a possibly-aliased/shared block statement).
     std::map<compiler::BasicBlock*, es2panda::ir::IfStatement*> block2ifstatement_;
+
+    // Raw reconstructed test expression (operand 0 of the IfImm) for each
+    // condition block — used to rebuild a value-select ternary's path condition.
+    std::map<compiler::BasicBlock*, es2panda::ir::Expression*> block2rawtest_;
 
     std::map<uint32_t, es2panda::ir::BlockStatement*> id2block;
 
