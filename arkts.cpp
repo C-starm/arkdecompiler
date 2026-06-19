@@ -129,21 +129,73 @@ void ArkTSGen::WriteIndent(){
     } 
 }
 
+// JS binary/logical operator precedence (higher binds tighter). Used to decide
+// when a child binary expression needs parentheses so the printed source parses
+// back to the same tree (e.g. `(a - b) * c`, not `a - b * c`).
+static int BinaryOpPrecedence(lexer::TokenType op){
+    switch(op){
+        case lexer::TokenType::PUNCTUATOR_NULLISH_COALESCING: return 3;
+        case lexer::TokenType::PUNCTUATOR_LOGICAL_OR:         return 4;
+        case lexer::TokenType::PUNCTUATOR_LOGICAL_AND:        return 5;
+        case lexer::TokenType::PUNCTUATOR_BITWISE_OR:         return 6;
+        case lexer::TokenType::PUNCTUATOR_BITWISE_XOR:        return 7;
+        case lexer::TokenType::PUNCTUATOR_BITWISE_AND:        return 8;
+        case lexer::TokenType::PUNCTUATOR_EQUAL:
+        case lexer::TokenType::PUNCTUATOR_NOT_EQUAL:
+        case lexer::TokenType::PUNCTUATOR_STRICT_EQUAL:
+        case lexer::TokenType::PUNCTUATOR_NOT_STRICT_EQUAL:   return 9;
+        case lexer::TokenType::PUNCTUATOR_LESS_THAN:
+        case lexer::TokenType::PUNCTUATOR_LESS_THAN_EQUAL:
+        case lexer::TokenType::PUNCTUATOR_GREATER_THAN:
+        case lexer::TokenType::PUNCTUATOR_GREATER_THAN_EQUAL:
+        case lexer::TokenType::KEYW_IN:
+        case lexer::TokenType::KEYW_INSTANCEOF:               return 10;
+        case lexer::TokenType::PUNCTUATOR_LEFT_SHIFT:
+        case lexer::TokenType::PUNCTUATOR_RIGHT_SHIFT:
+        case lexer::TokenType::PUNCTUATOR_UNSIGNED_RIGHT_SHIFT: return 11;
+        case lexer::TokenType::PUNCTUATOR_PLUS:
+        case lexer::TokenType::PUNCTUATOR_MINUS:              return 12;
+        case lexer::TokenType::PUNCTUATOR_MULTIPLY:
+        case lexer::TokenType::PUNCTUATOR_DIVIDE:
+        case lexer::TokenType::PUNCTUATOR_MOD:                return 13;
+        case lexer::TokenType::PUNCTUATOR_EXPONENTIATION:     return 14;
+        default:                                             return 0;
+    }
+}
+
 void ArkTSGen::EmitExpression(const ir::AstNode *node){
     if(node == nullptr){
         HandleError("#EmitExpression: emitExpression for null astnode");
     }
 
-    switch(node->Type()){ 
+    switch(node->Type()){
         case AstNodeType::BINARY_EXPRESSION:{
-            std::cout << "enter BINARY_EXPRESSION >>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
+            std::cout << "enter BINARY_EXPRESSION >>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
             auto binexpression = node->AsBinaryExpression();
+            int parentPrec = BinaryOpPrecedence(binexpression->OperatorType());
 
-            this->EmitExpression(binexpression->Left());
+            // Parenthesize a child binary operand when omitting parens would
+            // re-associate. Left child: parens if it binds LOOSER than the parent.
+            // Right child: also parens on EQUAL precedence (operators here are
+            // left-associative / non-associative: `a - (b - c)`, `a - (b + c)`).
+            auto emitOperand = [&](const ir::Expression* child, bool isRight){
+                bool paren = false;
+                if(child != nullptr && child->IsBinaryExpression()){
+                    int childPrec = BinaryOpPrecedence(child->AsBinaryExpression()->OperatorType());
+                    if(childPrec != 0 && parentPrec != 0){
+                        paren = isRight ? (childPrec <= parentPrec) : (childPrec < parentPrec);
+                    }
+                }
+                if(paren){ ss_ << "("; }
+                this->EmitExpression(child);
+                if(paren){ ss_ << ")"; }
+            };
+
+            emitOperand(binexpression->Left(), false);
             WriteSpace();
             ss_ << TokenToString(binexpression->OperatorType());
             WriteSpace();
-            this->EmitExpression(binexpression->Right());
+            emitOperand(binexpression->Right(), true);
             break;
         }
 
