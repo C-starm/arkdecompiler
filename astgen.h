@@ -406,7 +406,19 @@ public:
             // This removes the bulk of leftover temp registers without reordering effects.
             bool call_needs_materialize = expression->IsCallExpression() && !inst->HasSingleUser();
 
-            if(astcomplex>5 || call_needs_materialize || this->undefinedregids.find(curtargetid) != this->undefinedregids.end()){
+            // A mutable reference value (array/object literal, `new` result) has
+            // IDENTITY: inlining it at >1 use site yields a SEPARATE object per
+            // use, so mutations (`arr.push(x)`) and looped reads diverge / are
+            // lost. Materialise into `vN = [...]; ... vN` so every use refers to
+            // the one object. Single-use is safe to inline. Without this,
+            // `const pairs=[...]; pairs.push(lt)` had the push land on a throwaway
+            // literal rebuilt fresh at each of its use sites.
+            bool mutable_ref_needs_materialize =
+                (expression->IsArrayExpression() || expression->IsObjectExpression() ||
+                 expression->IsNewExpression()) && !inst->HasSingleUser();
+
+            if(astcomplex>5 || call_needs_materialize || mutable_ref_needs_materialize ||
+               this->undefinedregids.find(curtargetid) != this->undefinedregids.end()){
                 // dealwith untraved_reference
                 auto dst_reg_identifier = this->GetIdentifierByReg(curtargetid);
                 auto assignexpression = AllocNode<es2panda::ir::AssignmentExpression>(this, 
@@ -609,6 +621,47 @@ public:
             }
         }
         return cur;
+    }
+
+    // Chase `inst` through transparent `tonumeric` wrappers to the value below.
+    Inst* UnwrapToNumeric(Inst* inst){
+        Inst* cur = inst;
+        for(int guard = 0; cur != nullptr && guard < 8; ++guard){
+            if(cur->IsIntrinsic() &&
+               cur->CastToIntrinsic()->GetIntrinsicId() ==
+                   compiler::RuntimeInterface::IntrinsicId::TONUMERIC_IMM8){
+                cur = cur->GetInput(0).GetInst();
+            }else{
+                break;
+            }
+        }
+        return cur;
+    }
+
+    // Is `edge_value` (a phi back-edge input) the induction step `phi +/- 1`?
+    // i.e. an inc/dec whose operand is (modulo tonumeric) the phi itself. If so,
+    // return the +/- token so the back-edge can render as `i = i + 1` directly,
+    // instead of `i = vTmp; vTmp = i + 1` (which is wrong: vTmp is undefined on
+    // the first iteration, and may collide with an unrelated reused register).
+    bool DetectInductionStep(compiler::PhiInst* phi, Inst* edge_value,
+                             es2panda::lexer::TokenType* op_out){
+        Inst* step = UnwrapToNumeric(edge_value);
+        if(step == nullptr || !step->IsIntrinsic()){
+            return false;
+        }
+        auto iid = step->CastToIntrinsic()->GetIntrinsicId();
+        if(iid != compiler::RuntimeInterface::IntrinsicId::INC_IMM8 &&
+           iid != compiler::RuntimeInterface::IntrinsicId::DEC_IMM8){
+            return false;
+        }
+        Inst* base = UnwrapToNumeric(step->GetInput(0).GetInst());
+        if(base != static_cast<Inst*>(phi)){
+            return false;
+        }
+        *op_out = (iid == compiler::RuntimeInterface::IntrinsicId::INC_IMM8)
+                      ? es2panda::lexer::TokenType::PUNCTUATOR_PLUS
+                      : es2panda::lexer::TokenType::PUNCTUATOR_MINUS;
+        return true;
     }
 
     // Does this block terminate control flow (end in return / throw)? Such a
@@ -893,12 +946,8 @@ public:
             auto objname = GetNameFromExpression(rawobj);
             auto propname = GetNameFromExpression(rawprop);
 
-            if(objname && propname){
-                return *objname + "." + *propname;
-            }else{
-                return nullptr;
-                HandleError("#GetNameFromExpression: not support this case 1"); 
-            }    
+            return (objname ? *objname : std::string("__expr__")) + "." +
+                   (propname ? *propname : std::string("__expr__"));
         }else if(rawexpression->IsCallExpression()){
             auto callee = rawexpression->AsCallExpression()->Callee();
             if(callee->IsFunctionExpression()){
@@ -908,7 +957,10 @@ public:
                 return GetNameFromExpression(callee);
             }else{
                 std::cout << "###: " << std::to_string(static_cast<int>(callee->Type())) << std::endl;
-                HandleError("#GetNameFromExpression: not support this case 2"); 
+                // Unknown callee shape: return a placeholder name rather than
+                // aborting the whole decompile or returning nullopt (which some
+                // callers deref). Callers comparing against real names won't match.
+                return std::string("__expr__");
             }
         }else if(rawexpression->IsNullLiteral() ){
             return "null";
@@ -923,6 +975,14 @@ public:
         }else if(rawexpression->IsNewExpression()){
             auto callee = rawexpression->AsNewExpression()->Callee();
             return GetNameFromExpression(const_cast<es2panda::ir::Expression*>(callee));
+        }else if(rawexpression->IsConditionalExpression()){
+            auto c = rawexpression->AsConditionalExpression();
+            auto tn = GetNameFromExpression(const_cast<es2panda::ir::Expression*>(c->Test()));
+            auto cn = GetNameFromExpression(const_cast<es2panda::ir::Expression*>(c->Consequent()));
+            auto an = GetNameFromExpression(const_cast<es2panda::ir::Expression*>(c->Alternate()));
+            return "(" + (tn?*tn:std::string("__expr__")) + " ? " +
+                   (cn?*cn:std::string("__expr__")) + " : " +
+                   (an?*an:std::string("__expr__")) + ")";
         }else if(rawexpression->IsBinaryExpression()){
             auto binexpression = rawexpression->AsBinaryExpression();
             auto tokentype = es2panda::lexer::TokenToString(binexpression->OperatorType());
@@ -930,12 +990,8 @@ public:
             auto left = GetNameFromExpression(binexpression->Left());
             auto right = GetNameFromExpression(binexpression->Right());
 
-            if(left && right){
-                return *left + " " + tokentype + " " +  *right;
-            }else{
-                return nullptr;
-                HandleError("#GetNameFromExpression: not support this case 3"); 
-            }
+            return (left ? *left : std::string("__expr__")) + " " + tokentype + " " +
+                   (right ? *right : std::string("__expr__"));
         }else if(rawexpression->IsArrayExpression()){
             std::stringstream ss_;
             int count = 0;
@@ -991,7 +1047,8 @@ public:
             return ss_.str();
         }else{
             std::cout << "###1: " << std::to_string(static_cast<int>(rawexpression->Type())) << std::endl;
-            HandleError("#GetNameFromExpression: not support this case 4"); 
+            // Unknown expression shape: placeholder rather than abort/nullopt.
+            return std::string("__expr__");
         }
         return nullptr;
     }

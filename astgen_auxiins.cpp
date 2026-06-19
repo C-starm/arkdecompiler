@@ -55,7 +55,20 @@ void AstGen::VisitPhi(GraphVisitor* v, Inst* inst_base) {
     for (size_t i = 0; i < inst->GetInputsCount(); i++) {
         auto bb = inst->GetPhiInputBb(i);
         auto sourceexpression = *enc->GetExpressionByRegIndex(inst, i);
-        auto assignexpression = AllocNode<es2panda::ir::AssignmentExpression>(enc, 
+
+        // Loop induction step: if this back-edge value is `phi +/- 1` (an inc/dec
+        // of the phi itself, modulo tonumeric), render it as `i = i + 1` directly.
+        // The default `i = <backedge tmp>` is wrong here: the bytecode routes the
+        // step through a separate register that is undefined on the first
+        // iteration and can collide with an unrelated reused register (e.g. a
+        // materialized array sharing the physical reg), corrupting both.
+        es2panda::lexer::TokenType step_op;
+        if(enc->DetectInductionStep(inst, inst->GetInput(i).GetInst(), &step_op)){
+            sourceexpression = AllocNode<es2panda::ir::BinaryExpression>(
+                enc, dst_reg_identifier, enc->constant_one, step_op);
+        }
+
+        auto assignexpression = AllocNode<es2panda::ir::AssignmentExpression>(enc,
                                                                             dst_reg_identifier,
                                                                             sourceexpression,
                                                                             es2panda::lexer::TokenType::PUNCTUATOR_SUBSTITUTION

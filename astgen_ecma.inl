@@ -167,12 +167,29 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
        case compiler::RuntimeInterface::IntrinsicId::DEC_IMM8:
        {
             panda::es2panda::ir::Expression* source_expression = *enc->GetExpressionByAcc(inst);
-            auto binexpression = AllocNode<es2panda::ir::BinaryExpression>(enc, 
+            auto binexpression = AllocNode<es2panda::ir::BinaryExpression>(enc,
                                                             source_expression,
                                                             enc->constant_one,
                                                             IncDecIntrinsicIdToToken(inst->GetIntrinsicId())
             );
-            enc->HandleNewCreatedExpression(inst, binexpression);
+            // If this inc/dec is a loop induction STEP (its result feeds a Phi —
+            // the loop counter), the phi back-edge already renders it as
+            // `i = i + 1`. Materialising it here would emit a redundant, and
+            // possibly register-aliased, `vTmp = i + 1` that can clobber an
+            // unrelated reused register. Bind the expression without emitting a
+            // statement; the phi consumes it.
+            bool feeds_phi = false;
+            for(auto& u : inst->GetUsers()){
+                if(u.GetInst() != nullptr && u.GetInst()->IsPhi()){
+                    feeds_phi = true;
+                    break;
+                }
+            }
+            if(feeds_phi){
+                enc->SetExpressionByRegister(inst, inst->GetDstReg(), binexpression);
+            }else{
+                enc->HandleNewCreatedExpression(inst, binexpression);
+            }
             break;
         }
 
