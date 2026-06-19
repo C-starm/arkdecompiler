@@ -831,6 +831,76 @@ public:
         return AllocNode<es2panda::ir::ConditionalExpression>(this, cond, xexpr, yexpr);
     }
 
+    // Reachability of `target` from `start` within a bounded forward walk
+    // (avoids loops via a visited set; bound keeps it cheap).
+    bool ReachesBlock(BasicBlock* start, BasicBlock* target){
+        if(start == nullptr || target == nullptr){
+            return false;
+        }
+        std::set<BasicBlock*> seen;
+        std::vector<BasicBlock*> stack{start};
+        int guard = 0;
+        while(!stack.empty() && guard++ < 512){
+            BasicBlock* b = stack.back();
+            stack.pop_back();
+            if(b == target){
+                return true;
+            }
+            if(!seen.insert(b).second){
+                continue;
+            }
+            for(auto* s : b->GetSuccsBlocks()){
+                stack.push_back(s);
+            }
+        }
+        return false;
+    }
+
+    // Is `target` reachable from EXACTLY ONE of `ifblock`'s two successors? If
+    // both successors reach it, `target` is a post-if continuation MERGE (it must
+    // be emitted after the if, not captured as a branch/else). If only one does,
+    // it is a genuine single-branch body (e.g. the shared return of
+    // `if(a||b){return}`) and may be nested as the else.
+    bool TargetIsSingleBranchBody(BasicBlock* ifblock, BasicBlock* target){
+        if(ifblock == nullptr || ifblock->GetSuccsBlocks().size() < 2){
+            return false;
+        }
+        BasicBlock* t = ifblock->GetTrueSuccessor();
+        BasicBlock* f = ifblock->GetFalseSuccessor();
+        // Walk from each successor but do NOT pass back through ifblock; treat
+        // `target` itself as a sink (don't walk through it to the other side).
+        bool fromTrue = ReachesBlockAvoiding(t, target, ifblock, target);
+        bool fromFalse = ReachesBlockAvoiding(f, target, ifblock, target);
+        return fromTrue != fromFalse;  // exactly one
+    }
+
+    bool ReachesBlockAvoiding(BasicBlock* start, BasicBlock* target,
+                              BasicBlock* avoid, BasicBlock* sink){
+        if(start == nullptr || target == nullptr){
+            return false;
+        }
+        std::set<BasicBlock*> seen;
+        std::vector<BasicBlock*> stack{start};
+        int guard = 0;
+        while(!stack.empty() && guard++ < 512){
+            BasicBlock* b = stack.back();
+            stack.pop_back();
+            if(b == target){
+                return true;
+            }
+            if(b == avoid || b == sink){
+                continue;  // don't traverse through the if-block or past the target
+            }
+            if(!seen.insert(b).second){
+                continue;
+            }
+            for(auto* s : b->GetSuccsBlocks()){
+                stack.push_back(s);
+            }
+        }
+        return false;
+    }
+
     bool BlockTerminates(BasicBlock* block){
         if(block == nullptr){
             return false;

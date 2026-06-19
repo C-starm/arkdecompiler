@@ -584,7 +584,8 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
                 // must stay after the if, not become the else), keep it as the
                 // explicit else body instead of letting it be mis-placed.
                 if(enc->BlockTerminates(block->GetFalseSuccessor()) &&
-                   !enc->BlockHasPhi(block->GetFalseSuccessor())){
+                   !enc->BlockHasPhi(block->GetFalseSuccessor()) &&
+                   enc->TargetIsSingleBranchBody(block, block->GetFalseSuccessor())){
                     enc->specialblockid.insert(block->GetFalseSuccessor()->GetId());
                     false_statements = enc->GetBlockStatementById(block->GetFalseSuccessor());
                 }
@@ -602,7 +603,8 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
                 // continuation (e.g. `let s=x; if(c){s=y} return s`), which must
                 // be emitted AFTER the if, not captured as the else.
                 if(enc->BlockTerminates(block->GetTrueSuccessor()) &&
-                   !enc->BlockHasPhi(block->GetTrueSuccessor())){
+                   !enc->BlockHasPhi(block->GetTrueSuccessor()) &&
+                   enc->TargetIsSingleBranchBody(block, block->GetTrueSuccessor())){
                     enc->specialblockid.insert(block->GetTrueSuccessor()->GetId());
                     true_statements = enc->GetBlockStatementById(block->GetTrueSuccessor());
                 }
@@ -739,6 +741,27 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
             if(true_statements != nullptr){
                 enc->AddInstAst2BlockStatemntByInst(inst, ifStatement);
                 enc->block2ifstatement_[block] = ifStatement;
+
+                // A single-branch if (ret 1/2) whose DROPPED successor is a
+                // terminating CONTINUATION merge (reached from both branches,
+                // e.g. `if(len===0){loop} return out`) must emit that
+                // continuation AFTER the if, on all paths — otherwise the
+                // not-taken path falls through to undefined. (When the dropped
+                // successor is a single-branch body it was already captured as
+                // the else above; when it is a value-merge phi the merge-hoist
+                // handles it; this covers the no-phi multi-pred return merge.)
+                BasicBlock* dropped = (ret == 2) ? block->GetTrueSuccessor()
+                                     : (ret == 1) ? block->GetFalseSuccessor()
+                                                  : nullptr;
+                if(dropped != nullptr &&
+                   enc->BlockTerminates(dropped) &&
+                   !enc->BlockHasPhi(dropped) &&
+                   !enc->TargetIsSingleBranchBody(block, dropped) &&
+                   enc->specialblockid.find(dropped->GetId()) == enc->specialblockid.end()){
+                    enc->specialblockid.insert(dropped->GetId());
+                    auto* cont = enc->GetBlockStatementById(dropped);
+                    enc->AddInstAst2BlockStatemntByInst(inst, cont);
+                }
             }
             std::cout << "[-] if ===" << std::endl;
 
