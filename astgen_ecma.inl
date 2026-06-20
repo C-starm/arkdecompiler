@@ -178,14 +178,24 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
             // possibly register-aliased, `vTmp = i + 1` that can clobber an
             // unrelated reused register. Bind the expression without emitting a
             // statement; the phi consumes it.
+            // Suppress materialisation ONLY when the inc/dec feeds a phi AND has
+            // no OTHER (non-phi) user. If its result is also read elsewhere (e.g.
+            // `arr[i-1]` snapshots the decremented value), it must stay a real
+            // `vTmp = i - 1` variable — folding it into the phi's `i = i - 1`
+            // would make those reads see the NEW counter, an off-by-one.
             bool feeds_phi = false;
+            bool has_other_user = false;
             for(auto& u : inst->GetUsers()){
-                if(u.GetInst() != nullptr && u.GetInst()->IsPhi()){
+                if(u.GetInst() == nullptr){
+                    continue;
+                }
+                if(u.GetInst()->IsPhi()){
                     feeds_phi = true;
-                    break;
+                }else{
+                    has_other_user = true;
                 }
             }
-            if(feeds_phi){
+            if(feeds_phi && !has_other_user){
                 enc->SetExpressionByRegister(inst, inst->GetDstReg(), binexpression);
             }else{
                 enc->HandleNewCreatedExpression(inst, binexpression);

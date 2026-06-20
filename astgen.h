@@ -658,6 +658,23 @@ public:
         if(base != static_cast<Inst*>(phi)){
             return false;
         }
+        // The step value must feed ONLY this phi. If the inc/dec result (or the
+        // tonumeric wrapping it) is read elsewhere — e.g. `arr[i-1]` snapshots the
+        // decremented value — folding to `i = i +/- 1` would make those reads see
+        // the new counter (an off-by-one). Keep the materialised `vTmp` then.
+        for(auto& u : step->GetUsers()){
+            if(u.GetInst() != nullptr && !u.GetInst()->IsPhi() &&
+               u.GetInst() != edge_value){
+                return false;
+            }
+        }
+        if(edge_value != step){
+            for(auto& u : edge_value->GetUsers()){
+                if(u.GetInst() != nullptr && !u.GetInst()->IsPhi()){
+                    return false;
+                }
+            }
+        }
         *op_out = (iid == compiler::RuntimeInterface::IntrinsicId::INC_IMM8)
                       ? es2panda::lexer::TokenType::PUNCTUATOR_PLUS
                       : es2panda::lexer::TokenType::PUNCTUATOR_MINUS;
@@ -837,7 +854,38 @@ public:
         }
         auto xexpr = *GetExpressionByRegIndex(phi, x_idx);
         auto yexpr = *GetExpressionByRegIndex(phi, (size_t)y_idx);
+        // Both selected values must be INLINABLE at the phi position. A value that
+        // is an object/array literal — or a `vNN` temp that was materialised
+        // inside one of the (now-collapsed) branch blocks via `vN={...}; vN.k=…` —
+        // is NOT valid outside that block: inlining it into `cond ? X : Y` leaves
+        // the construction statements stranded and references an unbound temp.
+        // Bail to the default per-edge phi handling (verbose if/else) in that case.
+        if(!IsInlinableTernaryValue(xexpr) || !IsInlinableTernaryValue(yexpr)){
+            return nullptr;
+        }
         return AllocNode<es2panda::ir::ConditionalExpression>(this, cond, xexpr, yexpr);
+    }
+
+    // Safe to inline as a ternary arm: a literal, a member access (`Color.Gray`),
+    // a call, a binary/unary/conditional expr, or a NON-temp identifier (param /
+    // `undefined`). Rejected: object/array literals (need block construction) and
+    // bare `vNN` temps (may be materialised inside a collapsed branch block).
+    bool IsInlinableTernaryValue(es2panda::ir::Expression* e){
+        if(e == nullptr){
+            return false;
+        }
+        if(e->IsObjectExpression() || e->IsArrayExpression()){
+            return false;
+        }
+        if(e->IsIdentifier()){
+            auto nm = e->AsIdentifier()->Name().Mutf8();
+            // `vNN` temp register names are block-local materialised values.
+            if(nm.size() >= 2 && nm[0] == 'v' && nm[1] >= '0' && nm[1] <= '9'){
+                return false;
+            }
+            return true;
+        }
+        return true;
     }
 
     // Can `start` reach a NORMAL function exit (a `return`/`returnundefined`
