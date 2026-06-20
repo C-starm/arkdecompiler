@@ -1229,7 +1229,20 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
             }else if(raw_obj->IsMemberExpression() || raw_obj->IsIdentifier()  ){
                 auto valueexpression = *enc->GetExpressionByAcc(inst);
 
-                if(enc->methodname2offset_->find(*enc->GetNameFromExpression(valueexpression) ) == enc->methodname2offset_->end()){
+                // Skip the element store ONLY when the value is a bare method
+                // REFERENCE (an identifier that is a known method — class member
+                // setup), NOT when it is a call/expression whose RESULT happens to
+                // share a method's name. `arr[i] = pad2(x)` must be emitted; only
+                // `arr[i] = pad2` (the function itself) is the skip case. Without
+                // this, materialized arrays of call-expr elements (e.g.
+                // `[pad2(r), pad2(g), pad2(b)]`) lost every element -> empty array.
+                bool is_method_ref = valueexpression->IsIdentifier();
+                std::optional<std::string> vname;
+                if(is_method_ref){
+                    vname = enc->GetNameFromExpression(valueexpression);
+                }
+                if(!is_method_ref || !vname ||
+                   enc->methodname2offset_->find(*vname) == enc->methodname2offset_->end()){
                     auto objattrexpression = AllocNode<es2panda::ir::MemberExpression>(enc,
                                                                 raw_obj,
                                                                 enc->GetLiteralByNum(index), 

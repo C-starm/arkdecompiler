@@ -651,7 +651,7 @@ index 71c57ff..f87f482 100644
      std::cout << "[-] VisitIfImm  >>>>>>>>>>>>>>>>>" << std::endl;
  }
 diff --git a/astgen_ecma.inl b/astgen_ecma.inl
-index 827f82b..eb90243 100644
+index 827f82b..b8fa5b6 100644
 --- a/astgen_ecma.inl
 +++ b/astgen_ecma.inl
 @@ -167,12 +167,29 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
@@ -815,7 +815,29 @@ index 827f82b..eb90243 100644
                      }
                  }
                  
-@@ -1215,7 +1248,7 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
+@@ -1196,7 +1229,20 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
+             }else if(raw_obj->IsMemberExpression() || raw_obj->IsIdentifier()  ){
+                 auto valueexpression = *enc->GetExpressionByAcc(inst);
+ 
+-                if(enc->methodname2offset_->find(*enc->GetNameFromExpression(valueexpression) ) == enc->methodname2offset_->end()){
++                // Skip the element store ONLY when the value is a bare method
++                // REFERENCE (an identifier that is a known method — class member
++                // setup), NOT when it is a call/expression whose RESULT happens to
++                // share a method's name. `arr[i] = pad2(x)` must be emitted; only
++                // `arr[i] = pad2` (the function itself) is the skip case. Without
++                // this, materialized arrays of call-expr elements (e.g.
++                // `[pad2(r), pad2(g), pad2(b)]`) lost every element -> empty array.
++                bool is_method_ref = valueexpression->IsIdentifier();
++                std::optional<std::string> vname;
++                if(is_method_ref){
++                    vname = enc->GetNameFromExpression(valueexpression);
++                }
++                if(!is_method_ref || !vname ||
++                   enc->methodname2offset_->find(*vname) == enc->methodname2offset_->end()){
+                     auto objattrexpression = AllocNode<es2panda::ir::MemberExpression>(enc,
+                                                                 raw_obj,
+                                                                 enc->GetLiteralByNum(index), 
+@@ -1215,7 +1261,7 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
                  }
              }else{
                  std::cout << "###: " << std::to_string(static_cast<int>(raw_obj->Type())) << std::endl;
@@ -824,7 +846,7 @@ index 827f82b..eb90243 100644
              }
              ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
  
-@@ -1390,7 +1423,7 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
+@@ -1390,7 +1436,7 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
                  if(idname){
                      closure_name = *idname;
                  }else{
@@ -833,7 +855,7 @@ index 827f82b..eb90243 100644
                  }
                  lexicalenvstack->Set(tier, index, new std::string(*idname));
              }
-@@ -1439,7 +1472,15 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
+@@ -1439,7 +1485,15 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
              std::cout << "size: " << lexicalenvstack->Size() << std::endl;
  
              if(lexicalenvstack->GetLexicalEnv(tier)[index] == nullptr){
@@ -850,7 +872,7 @@ index 827f82b..eb90243 100644
              }
  
              auto identifier_name = lexicalenvstack->Get(tier, index);
-@@ -1477,14 +1518,11 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
+@@ -1477,14 +1531,11 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
              break;
          }
  
@@ -866,7 +888,7 @@ index 827f82b..eb90243 100644
         case compiler::RuntimeInterface::IntrinsicId::CALLRUNTIME_LDLAZYSENDABLEMODULEVAR_PREF_IMM8:
         case compiler::RuntimeInterface::IntrinsicId::CALLRUNTIME_WIDELDLAZYSENDABLEMODULEVAR_PREF_IMM16:
         case compiler::RuntimeInterface::IntrinsicId::CALLRUNTIME_LDSENDABLELOCALMODULEVAR_PREF_IMM8:
-@@ -1496,7 +1534,51 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
+@@ -1496,7 +1547,51 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
                  panda::es2panda::ir::Identifier* moudlevar = enc->GetIdentifierByName(moudlevar_rawname);
                  enc->SetExpressionByRegister(inst, inst->GetDstReg(), moudlevar);
              }else{
@@ -919,7 +941,7 @@ index 827f82b..eb90243 100644
              }
  
              break;
-@@ -1513,7 +1595,9 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
+@@ -1513,7 +1608,9 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
              std::cout << "size: " << lexicalenvstack->Size() << std::endl;
  
              if(lexicalenvstack->GetLexicalEnv(tier)[index] == nullptr){
@@ -930,7 +952,7 @@ index 827f82b..eb90243 100644
              }
  
              auto identifier_name = lexicalenvstack->Get(tier, index);
-@@ -1539,7 +1623,9 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
+@@ -1539,7 +1636,9 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
                  enc->SetExpressionByRegister(inst, inst->GetDstReg(), enc->GetIdentifierByName(identifier_name));
  
              } else {
@@ -941,7 +963,7 @@ index 827f82b..eb90243 100644
              }
              
              break;
-@@ -1649,8 +1735,8 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
+@@ -1649,8 +1748,8 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
                      if (enc->methodname2offset_->find(member_function) != enc->methodname2offset_->end()) {
                          member_offset = (*enc->methodname2offset_)[member_function];
                      }else{
@@ -952,7 +974,7 @@ index 827f82b..eb90243 100644
                      }
  
  
-@@ -1740,7 +1826,9 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
+@@ -1740,7 +1839,9 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
              auto index = static_cast<uint32_t>(inst->GetImms()[2]);
              auto lexicalenvstack = enc->bb2lexicalenvstack_[inst->GetBasicBlock()];
              if(lexicalenvstack->GetLexicalEnv(tier)[index] == nullptr){
@@ -963,7 +985,7 @@ index 827f82b..eb90243 100644
              }
              auto attr_name = lexicalenvstack->Get(tier, index);
              auto attr_expression = enc->GetIdentifierByName(attr_name);
-@@ -1977,7 +2065,9 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
+@@ -1977,7 +2078,9 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
              std::cout << "size: " << lexicalenvstack->Size() << std::endl;
  
              if(lexicalenvstack->GetLexicalEnv(tier)[index] == nullptr){
@@ -974,7 +996,7 @@ index 827f82b..eb90243 100644
              }
  
              auto identifier_name = lexicalenvstack->Get(tier, index);
-@@ -2039,7 +2129,7 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
+@@ -2039,7 +2142,7 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
  
              }else{
                  std::cout << "###: " << std::to_string(static_cast<int>(raw_obj->Type())) << std::endl;
@@ -983,7 +1005,7 @@ index 827f82b..eb90243 100644
  
              }
              break;
-@@ -2113,13 +2203,26 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
+@@ -2113,13 +2216,26 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
         {
              panda::es2panda::ir::Expression* funname = enc->GetIdentifierByName("super");
              auto source_expression =  *enc->GetExpressionByRegIndex(inst, 0);
@@ -1015,7 +1037,7 @@ index 827f82b..eb90243 100644
                                                                                  nullptr,
                                                                                  false
                                                                              );
-@@ -2296,10 +2399,10 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
+@@ -2296,10 +2412,10 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
                          constructor_offset = (*enc->methodname2offset_)[*objname];
                      }else{
                          std::cout << "objname: " << *objname << std::endl;
@@ -1028,7 +1050,7 @@ index 827f82b..eb90243 100644
                  }
                  ////////////////////////////////////////////////////////////////////////////////////////////
                  if(rawcalleename1 && *rawcalleename1 != "undefined"){
-@@ -2824,7 +2927,11 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
+@@ -2824,7 +2940,11 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
          }
         
          default:
@@ -1043,7 +1065,7 @@ index 827f82b..eb90243 100644
      }
  }
 diff --git a/astgen.h b/astgen.h
-index bdc9d68..9c902c4 100644
+index bdc9d68..fa123b1 100644
 --- a/astgen.h
 +++ b/astgen.h
 @@ -21,7 +21,9 @@ public:
@@ -1098,7 +1120,7 @@ index bdc9d68..9c902c4 100644
                  // dealwith untraved_reference
                  auto dst_reg_identifier = this->GetIdentifierByReg(curtargetid);
                  auto assignexpression = AllocNode<es2panda::ir::AssignmentExpression>(this, 
-@@ -576,6 +599,409 @@ public:
+@@ -576,6 +599,438 @@ public:
          return false;
      }
  
@@ -1324,6 +1346,15 @@ index bdc9d68..9c902c4 100644
 +        if(conds.empty()){
 +            return nullptr;
 +        }
++        // Every collected branch condition must be a real TEST, not a bare value
++        // the raw-test reconstruction fell back to (a lone `undefined`/`null`/
++        // constant). Building `(undefined ? X : Y)` is a misdetection — bail and
++        // let the default per-edge phi handling emit it instead.
++        for(auto* c : conds){
++            if(!IsTestLikeExpression(c)){
++                return nullptr;
++            }
++        }
 +        es2panda::ir::Expression* cond = conds[0];
 +        for(size_t i = 1; i < conds.size(); ++i){
 +            cond = AllocNode<es2panda::ir::BinaryExpression>(
@@ -1332,6 +1363,26 @@ index bdc9d68..9c902c4 100644
 +        auto xexpr = *GetExpressionByRegIndex(phi, x_idx);
 +        auto yexpr = *GetExpressionByRegIndex(phi, (size_t)y_idx);
 +        return AllocNode<es2panda::ir::ConditionalExpression>(this, cond, xexpr, yexpr);
++    }
++
++    // A usable ternary/branch condition: a comparison/logical/unary/call, or a
++    // member/identifier that is NOT a bare `undefined`/`null` placeholder. Rejects
++    // raw literals and the undefined/null fallbacks of a failed reconstruction.
++    bool IsTestLikeExpression(es2panda::ir::Expression* e){
++        if(e == nullptr){
++            return false;
++        }
++        if(e->IsBinaryExpression() || e->IsUnaryExpression() || e->IsCallExpression()){
++            return true;
++        }
++        if(e->IsIdentifier()){
++            auto nm = e->AsIdentifier()->Name().Mutf8();
++            return nm != "undefined" && nm != "null" && nm != "hole" && nm != "NaN";
++        }
++        if(e->IsMemberExpression()){
++            return true;
++        }
++        return false;
 +    }
 +
 +    // Reachability of `target` from `start` within a bounded forward walk
@@ -1508,7 +1559,7 @@ index bdc9d68..9c902c4 100644
      std::optional<std::string> GetNameFromExpression(es2panda::ir::Expression* rawexpression){
          if(rawexpression->IsIdentifier()){
              auto objname = rawexpression->AsIdentifier()->Name().Mutf8();
-@@ -590,12 +1016,8 @@ public:
+@@ -590,12 +1045,8 @@ public:
              auto objname = GetNameFromExpression(rawobj);
              auto propname = GetNameFromExpression(rawprop);
  
@@ -1523,7 +1574,7 @@ index bdc9d68..9c902c4 100644
          }else if(rawexpression->IsCallExpression()){
              auto callee = rawexpression->AsCallExpression()->Callee();
              if(callee->IsFunctionExpression()){
-@@ -605,7 +1027,10 @@ public:
+@@ -605,7 +1056,10 @@ public:
                  return GetNameFromExpression(callee);
              }else{
                  std::cout << "###: " << std::to_string(static_cast<int>(callee->Type())) << std::endl;
@@ -1535,7 +1586,7 @@ index bdc9d68..9c902c4 100644
              }
          }else if(rawexpression->IsNullLiteral() ){
              return "null";
-@@ -620,6 +1045,14 @@ public:
+@@ -620,6 +1074,14 @@ public:
          }else if(rawexpression->IsNewExpression()){
              auto callee = rawexpression->AsNewExpression()->Callee();
              return GetNameFromExpression(const_cast<es2panda::ir::Expression*>(callee));
@@ -1550,7 +1601,7 @@ index bdc9d68..9c902c4 100644
          }else if(rawexpression->IsBinaryExpression()){
              auto binexpression = rawexpression->AsBinaryExpression();
              auto tokentype = es2panda::lexer::TokenToString(binexpression->OperatorType());
-@@ -627,12 +1060,8 @@ public:
+@@ -627,12 +1089,8 @@ public:
              auto left = GetNameFromExpression(binexpression->Left());
              auto right = GetNameFromExpression(binexpression->Right());
  
@@ -1565,7 +1616,7 @@ index bdc9d68..9c902c4 100644
          }else if(rawexpression->IsArrayExpression()){
              std::stringstream ss_;
              int count = 0;
-@@ -688,7 +1117,8 @@ public:
+@@ -688,7 +1146,8 @@ public:
              return ss_.str();
          }else{
              std::cout << "###1: " << std::to_string(static_cast<int>(rawexpression->Type())) << std::endl;
@@ -1575,7 +1626,7 @@ index bdc9d68..9c902c4 100644
          }
          return nullptr;
      }
-@@ -824,6 +1254,8 @@ public:
+@@ -824,6 +1283,8 @@ public:
  
      std::map<size_t, std::vector<std::string>> index2namespaces_;
      std::vector<std::string> localnamespaces_;
@@ -1584,7 +1635,7 @@ index bdc9d68..9c902c4 100644
      std::map<uint32_t, std::set<uint32_t>> *class2memberfuns_;
      std::map<uint32_t, panda::es2panda::ir::ScriptFunction *> *method2scriptfunast_;
      std::map<uint32_t, panda::es2panda::ir::ClassDeclaration *>* ctor2classdeclast_;
-@@ -869,6 +1301,23 @@ public:
+@@ -869,6 +1330,23 @@ public:
  
      std::map<compiler::BasicBlock*, es2panda::ir::BlockStatement*> phiref2pendingredundant;
  

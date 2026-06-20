@@ -821,6 +821,15 @@ public:
         if(conds.empty()){
             return nullptr;
         }
+        // Every collected branch condition must be a real TEST, not a bare value
+        // the raw-test reconstruction fell back to (a lone `undefined`/`null`/
+        // constant). Building `(undefined ? X : Y)` is a misdetection — bail and
+        // let the default per-edge phi handling emit it instead.
+        for(auto* c : conds){
+            if(!IsTestLikeExpression(c)){
+                return nullptr;
+            }
+        }
         es2panda::ir::Expression* cond = conds[0];
         for(size_t i = 1; i < conds.size(); ++i){
             cond = AllocNode<es2panda::ir::BinaryExpression>(
@@ -829,6 +838,26 @@ public:
         auto xexpr = *GetExpressionByRegIndex(phi, x_idx);
         auto yexpr = *GetExpressionByRegIndex(phi, (size_t)y_idx);
         return AllocNode<es2panda::ir::ConditionalExpression>(this, cond, xexpr, yexpr);
+    }
+
+    // A usable ternary/branch condition: a comparison/logical/unary/call, or a
+    // member/identifier that is NOT a bare `undefined`/`null` placeholder. Rejects
+    // raw literals and the undefined/null fallbacks of a failed reconstruction.
+    bool IsTestLikeExpression(es2panda::ir::Expression* e){
+        if(e == nullptr){
+            return false;
+        }
+        if(e->IsBinaryExpression() || e->IsUnaryExpression() || e->IsCallExpression()){
+            return true;
+        }
+        if(e->IsIdentifier()){
+            auto nm = e->AsIdentifier()->Name().Mutf8();
+            return nm != "undefined" && nm != "null" && nm != "hole" && nm != "NaN";
+        }
+        if(e->IsMemberExpression()){
+            return true;
+        }
+        return false;
     }
 
     // Reachability of `target` from `start` within a bounded forward walk
