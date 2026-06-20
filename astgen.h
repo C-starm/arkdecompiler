@@ -840,6 +840,51 @@ public:
         return AllocNode<es2panda::ir::ConditionalExpression>(this, cond, xexpr, yexpr);
     }
 
+    // Can `start` reach a NORMAL function exit (a `return`/`returnundefined`
+    // block, or the graph end via a returning block) WITHOUT passing through
+    // `avoid`? THROW exits do not count — an exception path bypassing a block does
+    // not make that block a bypassable else (otherwise save's tail, which every
+    // NORMAL path passes through but a `throw` edge skips, would be misclassified).
+    // Used to tell a bypassable else-branch from a must-pass continuation.
+    bool ReachesExitAvoiding(BasicBlock* start, BasicBlock* avoid){
+        if(start == nullptr){
+            return false;
+        }
+        std::set<BasicBlock*> seen;
+        std::vector<BasicBlock*> stack{start};
+        int guard = 0;
+        while(!stack.empty() && guard++ < 512){
+            BasicBlock* b = stack.back();
+            stack.pop_back();
+            if(b == avoid){
+                continue;
+            }
+            if(!seen.insert(b).second){
+                continue;
+            }
+            // A returning block reached without `avoid` => bypassable. Throw-only
+            // exits are ignored (they are not normal continuations).
+            bool is_return_exit = false;
+            for(auto* inst : b->Insts()){
+                if(inst->IsIntrinsic()){
+                    auto iid = inst->CastToIntrinsic()->GetIntrinsicId();
+                    if(iid == compiler::RuntimeInterface::IntrinsicId::RETURN ||
+                       iid == compiler::RuntimeInterface::IntrinsicId::RETURNUNDEFINED){
+                        is_return_exit = true;
+                        break;
+                    }
+                }
+            }
+            if(is_return_exit){
+                return true;
+            }
+            for(auto* s : b->GetSuccsBlocks()){
+                stack.push_back(s);
+            }
+        }
+        return false;
+    }
+
     // A usable ternary/branch condition: a comparison/logical/unary/call, or a
     // member/identifier that is NOT a bare `undefined`/`null` placeholder. Rejects
     // raw literals and the undefined/null fallbacks of a failed reconstruction.

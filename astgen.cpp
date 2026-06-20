@@ -332,8 +332,24 @@ uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
     // we must NOT skip on IsLoopValid alone — use the precise IsLoopBranch.
     bool candidate_is_pure_branch_body =
         enc->BlockTerminates(analysis_block) && !enc->BlockHasPhi(analysis_block);
+    // Nested-else exemption: when `analysis_block` is `father`'s OWN direct
+    // successor AND father's OTHER successor can reach an exit WITHOUT passing
+    // through it, the block is a bypassable structured else of a nested
+    // `if(A){ if(B){x}else{shared} }` (father=B's if; `shared` also reached when
+    // !A). Flattening it here scrambles the nesting. A true post-if continuation
+    // (save's tail) is NOT bypassable — the other branch must pass through it —
+    // so it still hoists.
+    bool candidate_is_nested_else = false;
+    if(father->GetTrueSuccessor() == analysis_block ||
+       father->GetFalseSuccessor() == analysis_block){
+        BasicBlock* other = (father->GetTrueSuccessor() == analysis_block)
+                                ? father->GetFalseSuccessor()
+                                : father->GetTrueSuccessor();
+        candidate_is_nested_else = enc->ReachesExitAvoiding(other, analysis_block);
+    }
     if(!father->IsDominate(analysis_block) &&
        !candidate_is_pure_branch_body &&
+       !candidate_is_nested_else &&
        !IsLoopBranch(enc, father) &&
        !(father->IsLoopValid() && father->IsLoopHeader())){
         if(analysis_block == true_branch){
