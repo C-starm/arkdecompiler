@@ -389,6 +389,39 @@ public:
         return astcomplex;
     }
 
+    // Does this expression's subtree contain a call/new (a side effect)? Used to
+    // decide that a multi-user value must be materialised (inlining would
+    // re-evaluate the call at each use). Bounded recursion over the common shapes.
+    bool ExpressionContainsCall(es2panda::ir::Expression* e, int depth = 0){
+        if(e == nullptr || depth > 16){
+            return false;
+        }
+        if(e->IsCallExpression() || e->IsNewExpression()){
+            return true;
+        }
+        if(e->IsBinaryExpression()){
+            return ExpressionContainsCall(e->AsBinaryExpression()->Left(), depth+1) ||
+                   ExpressionContainsCall(e->AsBinaryExpression()->Right(), depth+1);
+        }
+        if(e->IsUnaryExpression()){
+            return ExpressionContainsCall(
+                const_cast<es2panda::ir::Expression*>(e->AsUnaryExpression()->Argument()), depth+1);
+        }
+        if(e->IsMemberExpression()){
+            return ExpressionContainsCall(
+                       const_cast<es2panda::ir::Expression*>(e->AsMemberExpression()->Object()), depth+1) ||
+                   ExpressionContainsCall(
+                       const_cast<es2panda::ir::Expression*>(e->AsMemberExpression()->Property()), depth+1);
+        }
+        if(e->IsConditionalExpression()){
+            auto* c = e->AsConditionalExpression();
+            return ExpressionContainsCall(const_cast<es2panda::ir::Expression*>(c->Test()), depth+1) ||
+                   ExpressionContainsCall(const_cast<es2panda::ir::Expression*>(c->Consequent()), depth+1) ||
+                   ExpressionContainsCall(const_cast<es2panda::ir::Expression*>(c->Alternate()), depth+1);
+        }
+        return false;
+    }
+
     void HandleNewCreatedExpression(Inst* inst, es2panda::ir::Expression* expression){
         if(inst->HasUsers()){
             
@@ -417,7 +450,17 @@ public:
                 (expression->IsArrayExpression() || expression->IsObjectExpression() ||
                  expression->IsNewExpression()) && !inst->HasSingleUser();
 
+            // A value whose expression SUBTREE contains a call has side effects
+            // even if it is not itself a top-level call (e.g.
+            // `s = "" + Math.round(Math.random()*N) + ""`). Inlining it at >1 use
+            // re-EVALUATES the call each time — `galleryNonceLikePython` computed a
+            // fresh random in each of its 3 uses of `s`. Materialise so the call
+            // runs once. (Single-use is safe.)
+            bool effectful_subtree_needs_materialize =
+                !inst->HasSingleUser() && ExpressionContainsCall(expression);
+
             if(astcomplex>5 || call_needs_materialize || mutable_ref_needs_materialize ||
+               effectful_subtree_needs_materialize ||
                this->undefinedregids.find(curtargetid) != this->undefinedregids.end()){
                 // dealwith untraved_reference
                 auto dst_reg_identifier = this->GetIdentifierByReg(curtargetid);

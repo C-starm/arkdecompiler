@@ -255,7 +255,17 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
         }
         case AstNodeType::MEMBER_EXPRESSION:{
             auto member_expression = node->AsMemberExpression();
-            this->EmitExpression(member_expression->Object());
+            // Member access binds tighter than `+`, etc., so an object that is a
+            // binary/unary expression must be parenthesized: `(a + b).length`, not
+            // `a + b.length` (which binds `.length` to `b`). ConditionalExpression
+            // is NOT included — the ternary emitter already wraps it in parens, so
+            // adding more here yields `((c?x:y)).f`.
+            auto* obj = member_expression->Object();
+            bool obj_needs_paren = obj != nullptr &&
+                (obj->IsBinaryExpression() || obj->IsUnaryExpression());
+            if(obj_needs_paren){ ss_ << "("; }
+            this->EmitExpression(obj);
+            if(obj_needs_paren){ ss_ << ")"; }
             if(member_expression->IsComputed()){
                 this->WriteLeftBracket();
                 this->EmitExpression(member_expression->Property());
