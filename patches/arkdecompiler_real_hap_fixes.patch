@@ -438,10 +438,47 @@ index 44f8b86..1a43b61 100644
  
      enc->specialblockid.insert(tryblock->GetId());
 diff --git a/astgen.cpp b/astgen.cpp
-index 71c57ff..2ad57f6 100644
+index 71c57ff..7b471b3 100644
 --- a/astgen.cpp
 +++ b/astgen.cpp
-@@ -150,7 +150,7 @@ void AstGen::VisitSpillFill(GraphVisitor *visitor, Inst *inst_base)
+@@ -124,7 +124,35 @@ bool AstGen::RunImpl()
+         if(this->phiref2pendingredundant.find(bb) != this->phiref2pendingredundant.end()){
+             this->inserted_statements.erase(this->phiref2pendingredundant[bb]);
+ 
+-            this->AddInstAst2BlockStatemntByBlock(bb, this->phiref2pendingredundant[bb], 1);
++            // Deferred phi back-edge assignments normally go at offset 1 (before a
++            // trailing if, and — happily — before the inline `index = guard - 1`
++            // step of a reverse loop, which must run AFTER the `guard = index`
++            // copy). BUT a lone induction increment (`i = i + N`) whose loop body's
++            // last statements READ `i` (e.g. HMAC `ipad[i]=..; opad[i]=..`) must go
++            // at the very END, or it lands between those reads and corrupts them.
++            // Detect that exact case (single statement, `i = i <op> literal`) and
++            // append at the end; everything else keeps the offset-1 behaviour.
++            uint32_t phi_offset = 1;
++            auto* pend = this->phiref2pendingredundant[bb];
++            if(pend->Statements().size() == 1){
++                auto* st = pend->Statements()[0];
++                if(st->IsExpressionStatement() &&
++                   st->AsExpressionStatement()->GetExpression()->IsAssignmentExpression()){
++                    auto* asg = st->AsExpressionStatement()->GetExpression()->AsAssignmentExpression();
++                    auto* rhs = asg->Right();
++                    if(asg->Left()->IsIdentifier() && rhs->IsBinaryExpression()){
++                        auto* be = rhs->AsBinaryExpression();
++                        // i <op> <literal>  with left operand == the assigned i
++                        if(be->Left()->IsIdentifier() &&
++                           be->Left()->AsIdentifier()->Name().Mutf8() ==
++                               asg->Left()->AsIdentifier()->Name().Mutf8() &&
++                           be->Right()->IsNumberLiteral()){
++                            phi_offset = 0;  // append at end
++                        }
++                    }
++                }
++            }
++            this->AddInstAst2BlockStatemntByBlock(bb, this->phiref2pendingredundant[bb], phi_offset);
+             this->phiref2pendingredundant.erase(bb);
+         }
+         
+@@ -150,7 +178,7 @@ void AstGen::VisitSpillFill(GraphVisitor *visitor, Inst *inst_base)
  
      for (auto sf : inst->GetSpillFills()) {
          if(sf.SrcType() != compiler::LocationType::REGISTER || sf.DstType() != compiler::LocationType::REGISTER ){
@@ -450,7 +487,7 @@ index 71c57ff..2ad57f6 100644
          }
          auto it = enc->reg2expression.find(sf.SrcValue());
          if (it == enc->reg2expression.end()) {
-@@ -281,6 +281,8 @@ void AstGen::VisitIf(GraphVisitor *v, Inst *inst_base)
+@@ -281,6 +309,8 @@ void AstGen::VisitIf(GraphVisitor *v, Inst *inst_base)
      std::cout << "[-] VisitIf  >>>>>>>>>>>>>>>>>" << std::endl;
  }
  
@@ -459,7 +496,7 @@ index 71c57ff..2ad57f6 100644
  uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
      //std::cout << "if block: " << std::to_string(father->GetId()) << std::endl;
      auto true_branch = father->GetTrueSuccessor();
-@@ -305,7 +307,58 @@ uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
+@@ -305,7 +335,58 @@ uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
      }else if(true_branch->GetPredsBlocks().size() == 1 && false_branch->GetPredsBlocks().size() == 1){
          return 0;
      }else{
@@ -519,7 +556,7 @@ index 71c57ff..2ad57f6 100644
      }
  
      BasicBlock* other_father = nullptr;
-@@ -365,7 +418,7 @@ uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
+@@ -365,7 +446,7 @@ uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
          return 0;
      }else{
          //std::cout << "end other_father: " << std::to_string(other_father->GetId()) << std::endl;
@@ -528,7 +565,7 @@ index 71c57ff..2ad57f6 100644
      }
      
      return 0;
-@@ -373,16 +426,21 @@ uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
+@@ -373,16 +454,21 @@ uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
  
  panda::es2panda::ir::Expression* AstGen::InverseTestExpression(AstGen *enc, Inst* inst_base, uint32_t ret, panda::es2panda::ir::Expression* src_expression, bool swap_truefalse){
      [[maybe_unused]] auto inst = inst_base->CastToIfImm();
@@ -557,7 +594,7 @@ index 71c57ff..2ad57f6 100644
              return new_src_expression;
          }else{
              return src_expression;
-@@ -403,7 +461,7 @@ panda::es2panda::ir::Expression* AstGen::InverseTestExpression(AstGen *enc, Inst
+@@ -403,7 +489,7 @@ panda::es2panda::ir::Expression* AstGen::InverseTestExpression(AstGen *enc, Inst
              }       
          }
  
@@ -566,7 +603,7 @@ index 71c57ff..2ad57f6 100644
                                                      src_expression,
                                                      enc->constant_zero,
                                                      BinIntrinsicIdToToken(cmpid));
-@@ -432,9 +490,44 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
+@@ -432,9 +518,44 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
      auto imm = inst->GetImm();
      auto block = inst->GetBasicBlock();
      panda::es2panda::ir::Expression* test_expression;
@@ -611,7 +648,7 @@ index 71c57ff..2ad57f6 100644
          auto ret = onlyOneBranch(inst->GetBasicBlock(), enc);
  
          es2panda::ir::Statement* true_statements = nullptr;
-@@ -501,10 +594,36 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
+@@ -501,10 +622,36 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
                  std::cout << "#VisitIfImm ret case: " << ret << std::endl;
                  enc->specialblockid.insert(block->GetTrueSuccessor()->GetId());
                  true_statements =   enc->GetBlockStatementById(block->GetTrueSuccessor());
@@ -648,7 +685,7 @@ index 71c57ff..2ad57f6 100644
              }
          /////////////////////////////////////////////////////////////////////////////////////////////////
          /////////////////////////////////////////////////////////////////////////////////////////////////
-@@ -637,6 +756,28 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
+@@ -637,6 +784,28 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
  
              if(true_statements != nullptr){
                  enc->AddInstAst2BlockStatemntByInst(inst, ifStatement);
@@ -677,7 +714,7 @@ index 71c57ff..2ad57f6 100644
              }
              std::cout << "[-] if ===" << std::endl;
  
-@@ -646,7 +787,7 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
+@@ -646,7 +815,7 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
          //true_statements->SetParent(block);
          //false_statements->SetParent(block);
      }else{
