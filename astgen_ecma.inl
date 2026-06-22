@@ -152,13 +152,49 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
        case compiler::RuntimeInterface::IntrinsicId::STRICTNOTEQ_IMM8_V8:
        case compiler::RuntimeInterface::IntrinsicId::STRICTEQ_IMM8_V8:
        case compiler::RuntimeInterface::IntrinsicId::EXP_IMM8_V8:{
-            panda::es2panda::ir::Expression* source_expression = *enc->GetExpressionByAcc(inst);  
-            auto binexpression = AllocNode<es2panda::ir::BinaryExpression>(enc, 
+            panda::es2panda::ir::Expression* source_expression = *enc->GetExpressionByAcc(inst);
+            auto binexpression = AllocNode<es2panda::ir::BinaryExpression>(enc,
                                                             *enc->GetExpressionByRegIndex(inst, 0),
                                                             source_expression,
                                                             BinIntrinsicIdToToken(inst->GetIntrinsicId())
             );
-            enc->HandleNewCreatedExpression(inst, binexpression);
+            // An add2/sub2 that is a loop induction STEP (`i + <constant>` feeding
+            // ONLY the counter phi, where the base IS that phi) must not be
+            // materialised as a separate `vTmp = i + N`: the phi back-edge already
+            // renders `i = i + N` (see DetectInductionStep). Suppress ONLY in that
+            // exact case — NOT for accumulators (`s = s + char`, rhs not constant)
+            // nor any add2 whose base is not the consuming phi, or it deletes the
+            // accumulation and orphans the temp.
+            auto bid = inst->GetIntrinsicId();
+            bool addsub = (bid == compiler::RuntimeInterface::IntrinsicId::ADD2_IMM8_V8 ||
+                           bid == compiler::RuntimeInterface::IntrinsicId::SUB2_IMM8_V8);
+            bool is_pure_induction_step = false;
+            if(addsub){
+                // rhs (acc operand) must be a Constant
+                Inst* rhs_inst = inst->GetInput(inst->GetInputsCount() - 2).GetInst();
+                bool rhs_is_const = rhs_inst != nullptr &&
+                                    rhs_inst->GetOpcode() == Opcode::Constant;
+                if(rhs_is_const){
+                    bool feeds_only_phi = inst->HasUsers();
+                    compiler::PhiInst* consumer = nullptr;
+                    for(auto& u : inst->GetUsers()){
+                        if(u.GetInst() == nullptr) continue;
+                        if(u.GetInst()->IsPhi()){ consumer = u.GetInst()->CastToPhi(); }
+                        else { feeds_only_phi = false; }
+                    }
+                    // base (input 0, modulo tonumeric) must BE the consuming phi —
+                    // i.e. this really is `phi = phi + const`, not `phi = other + const`.
+                    if(feeds_only_phi && consumer != nullptr){
+                        Inst* base = enc->UnwrapToNumeric(inst->GetInput(0).GetInst());
+                        is_pure_induction_step = (base == static_cast<Inst*>(consumer));
+                    }
+                }
+            }
+            if(is_pure_induction_step){
+                enc->SetExpressionByRegister(inst, inst->GetDstReg(), binexpression);
+            }else{
+                enc->HandleNewCreatedExpression(inst, binexpression);
+            }
 
             break;
         }

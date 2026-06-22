@@ -685,25 +685,48 @@ public:
         return cur;
     }
 
-    // Is `edge_value` (a phi back-edge input) the induction step `phi +/- 1`?
-    // i.e. an inc/dec whose operand is (modulo tonumeric) the phi itself. If so,
-    // return the +/- token so the back-edge can render as `i = i + 1` directly,
-    // instead of `i = vTmp; vTmp = i + 1` (which is wrong: vTmp is undefined on
-    // the first iteration, and may collide with an unrelated reused register).
+    // Is `edge_value` (a phi back-edge input) the induction step `phi <op> rhs`?
+    // i.e. an inc/dec, OR an add2/sub2 with a constant, whose base operand is
+    // (modulo tonumeric) the phi itself. If so, set op_out (+/-) and rhs_out (the
+    // step expression: `1` for inc/dec, the actual constant for add2/sub2) so the
+    // back-edge can render as `i = i + N` directly, instead of
+    // `i = vTmp; vTmp = i + N` (vTmp is undefined on iter 1 and may collide with a
+    // reused register). The step must feed ONLY this phi (else a snapshot reader
+    // like `arr[i-1]` would see the new counter — off-by-one).
     bool DetectInductionStep(compiler::PhiInst* phi, Inst* edge_value,
-                             es2panda::lexer::TokenType* op_out){
+                             es2panda::lexer::TokenType* op_out,
+                             es2panda::ir::Expression** rhs_out){
         Inst* step = UnwrapToNumeric(edge_value);
         if(step == nullptr || !step->IsIntrinsic()){
             return false;
         }
         auto iid = step->CastToIntrinsic()->GetIntrinsicId();
-        if(iid != compiler::RuntimeInterface::IntrinsicId::INC_IMM8 &&
-           iid != compiler::RuntimeInterface::IntrinsicId::DEC_IMM8){
+        bool is_incdec = (iid == compiler::RuntimeInterface::IntrinsicId::INC_IMM8 ||
+                          iid == compiler::RuntimeInterface::IntrinsicId::DEC_IMM8);
+        bool is_addsub = (iid == compiler::RuntimeInterface::IntrinsicId::ADD2_IMM8_V8 ||
+                          iid == compiler::RuntimeInterface::IntrinsicId::SUB2_IMM8_V8);
+        if(!is_incdec && !is_addsub){
             return false;
         }
+        // base operand = input 0 (for add2/sub2 `base op rhs`; for inc/dec the sole
+        // operand). It must be the phi (modulo tonumeric).
         Inst* base = UnwrapToNumeric(step->GetInput(0).GetInst());
         if(base != static_cast<Inst*>(phi)){
             return false;
+        }
+        // For add2/sub2 the rhs (acc operand, second-to-last input) must be a
+        // Constant — a true loop step `i + N`, not `i + something`.
+        es2panda::ir::Expression* rhs = nullptr;
+        if(is_addsub){
+            Inst* rhs_inst = step->GetInput(step->GetInputsCount() - 2).GetInst();
+            if(rhs_inst == nullptr || rhs_inst->GetOpcode() != Opcode::Constant){
+                return false;
+            }
+            auto it = this->id2expression.find(rhs_inst->GetId());
+            rhs = (it != this->id2expression.end()) ? it->second : nullptr;
+            if(rhs == nullptr){
+                return false;
+            }
         }
         // The step value must feed ONLY this phi. If the inc/dec result (or the
         // tonumeric wrapping it) is read elsewhere — e.g. `arr[i-1]` snapshots the
@@ -722,9 +745,13 @@ public:
                 }
             }
         }
-        *op_out = (iid == compiler::RuntimeInterface::IntrinsicId::INC_IMM8)
-                      ? es2panda::lexer::TokenType::PUNCTUATOR_PLUS
-                      : es2panda::lexer::TokenType::PUNCTUATOR_MINUS;
+        if(iid == compiler::RuntimeInterface::IntrinsicId::INC_IMM8 ||
+           iid == compiler::RuntimeInterface::IntrinsicId::ADD2_IMM8_V8){
+            *op_out = es2panda::lexer::TokenType::PUNCTUATOR_PLUS;
+        }else{
+            *op_out = es2panda::lexer::TokenType::PUNCTUATOR_MINUS;
+        }
+        *rhs_out = is_incdec ? this->constant_one : rhs;
         return true;
     }
 
