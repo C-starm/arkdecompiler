@@ -124,7 +124,35 @@ bool AstGen::RunImpl()
         if(this->phiref2pendingredundant.find(bb) != this->phiref2pendingredundant.end()){
             this->inserted_statements.erase(this->phiref2pendingredundant[bb]);
 
-            this->AddInstAst2BlockStatemntByBlock(bb, this->phiref2pendingredundant[bb], 1);
+            // Deferred phi back-edge assignments normally go at offset 1 (before a
+            // trailing if, and — happily — before the inline `index = guard - 1`
+            // step of a reverse loop, which must run AFTER the `guard = index`
+            // copy). BUT a lone induction increment (`i = i + N`) whose loop body's
+            // last statements READ `i` (e.g. HMAC `ipad[i]=..; opad[i]=..`) must go
+            // at the very END, or it lands between those reads and corrupts them.
+            // Detect that exact case (single statement, `i = i <op> literal`) and
+            // append at the end; everything else keeps the offset-1 behaviour.
+            uint32_t phi_offset = 1;
+            auto* pend = this->phiref2pendingredundant[bb];
+            if(pend->Statements().size() == 1){
+                auto* st = pend->Statements()[0];
+                if(st->IsExpressionStatement() &&
+                   st->AsExpressionStatement()->GetExpression()->IsAssignmentExpression()){
+                    auto* asg = st->AsExpressionStatement()->GetExpression()->AsAssignmentExpression();
+                    auto* rhs = asg->Right();
+                    if(asg->Left()->IsIdentifier() && rhs->IsBinaryExpression()){
+                        auto* be = rhs->AsBinaryExpression();
+                        // i <op> <literal>  with left operand == the assigned i
+                        if(be->Left()->IsIdentifier() &&
+                           be->Left()->AsIdentifier()->Name().Mutf8() ==
+                               asg->Left()->AsIdentifier()->Name().Mutf8() &&
+                           be->Right()->IsNumberLiteral()){
+                            phi_offset = 0;  // append at end
+                        }
+                    }
+                }
+            }
+            this->AddInstAst2BlockStatemntByBlock(bb, this->phiref2pendingredundant[bb], phi_offset);
             this->phiref2pendingredundant.erase(bb);
         }
         
