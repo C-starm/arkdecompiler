@@ -1110,7 +1110,7 @@ index 827f82b..2e0c08f 100644
      }
  }
 diff --git a/astgen.h b/astgen.h
-index bdc9d68..80e67c7 100644
+index bdc9d68..fa91b51 100644
 --- a/astgen.h
 +++ b/astgen.h
 @@ -21,7 +21,9 @@ public:
@@ -1215,7 +1215,18 @@ index bdc9d68..80e67c7 100644
                  // dealwith untraved_reference
                  auto dst_reg_identifier = this->GetIdentifierByReg(curtargetid);
                  auto assignexpression = AllocNode<es2panda::ir::AssignmentExpression>(this, 
-@@ -576,6 +642,531 @@ public:
+@@ -534,6 +600,10 @@ public:
+         }else if(literal.IsStringValue() || literal.tag_ == panda::panda_file::LiteralTag::LITERALARRAY ){
+             panda::es2panda::util::StringView literal_strview(* new std::string(std::get<std::string>(literal.value_)));
+             tmp = AllocNode<panda::es2panda::ir::StringLiteral>(this, literal_strview);
++        }else if(literal.tag_ == panda::panda_file::LiteralTag::NULLVALUE){
++            // An explicit `null` value in a literal object/array (e.g. `port: null`)
++            // — was falling through to the unsupported case / rendered as 0.
++            tmp = AllocNode<panda::es2panda::ir::NullLiteral>(this);
+         }else{
+             // METHODAFFILIATE = 0x0a  
+             // ASYNCMETHOD = 0x18
+@@ -576,6 +646,531 @@ public:
          return false;
      }
  
@@ -1747,7 +1758,7 @@ index bdc9d68..80e67c7 100644
      std::optional<std::string> GetNameFromExpression(es2panda::ir::Expression* rawexpression){
          if(rawexpression->IsIdentifier()){
              auto objname = rawexpression->AsIdentifier()->Name().Mutf8();
-@@ -590,12 +1181,8 @@ public:
+@@ -590,12 +1185,8 @@ public:
              auto objname = GetNameFromExpression(rawobj);
              auto propname = GetNameFromExpression(rawprop);
  
@@ -1762,7 +1773,7 @@ index bdc9d68..80e67c7 100644
          }else if(rawexpression->IsCallExpression()){
              auto callee = rawexpression->AsCallExpression()->Callee();
              if(callee->IsFunctionExpression()){
-@@ -605,7 +1192,10 @@ public:
+@@ -605,7 +1196,10 @@ public:
                  return GetNameFromExpression(callee);
              }else{
                  std::cout << "###: " << std::to_string(static_cast<int>(callee->Type())) << std::endl;
@@ -1774,7 +1785,7 @@ index bdc9d68..80e67c7 100644
              }
          }else if(rawexpression->IsNullLiteral() ){
              return "null";
-@@ -620,6 +1210,14 @@ public:
+@@ -620,6 +1214,14 @@ public:
          }else if(rawexpression->IsNewExpression()){
              auto callee = rawexpression->AsNewExpression()->Callee();
              return GetNameFromExpression(const_cast<es2panda::ir::Expression*>(callee));
@@ -1789,7 +1800,7 @@ index bdc9d68..80e67c7 100644
          }else if(rawexpression->IsBinaryExpression()){
              auto binexpression = rawexpression->AsBinaryExpression();
              auto tokentype = es2panda::lexer::TokenToString(binexpression->OperatorType());
-@@ -627,12 +1225,8 @@ public:
+@@ -627,12 +1229,8 @@ public:
              auto left = GetNameFromExpression(binexpression->Left());
              auto right = GetNameFromExpression(binexpression->Right());
  
@@ -1804,7 +1815,7 @@ index bdc9d68..80e67c7 100644
          }else if(rawexpression->IsArrayExpression()){
              std::stringstream ss_;
              int count = 0;
-@@ -688,7 +1282,8 @@ public:
+@@ -688,7 +1286,8 @@ public:
              return ss_.str();
          }else{
              std::cout << "###1: " << std::to_string(static_cast<int>(rawexpression->Type())) << std::endl;
@@ -1814,7 +1825,7 @@ index bdc9d68..80e67c7 100644
          }
          return nullptr;
      }
-@@ -824,6 +1419,8 @@ public:
+@@ -824,6 +1423,8 @@ public:
  
      std::map<size_t, std::vector<std::string>> index2namespaces_;
      std::vector<std::string> localnamespaces_;
@@ -1823,7 +1834,7 @@ index bdc9d68..80e67c7 100644
      std::map<uint32_t, std::set<uint32_t>> *class2memberfuns_;
      std::map<uint32_t, panda::es2panda::ir::ScriptFunction *> *method2scriptfunast_;
      std::map<uint32_t, panda::es2panda::ir::ClassDeclaration *>* ctor2classdeclast_;
-@@ -869,6 +1466,23 @@ public:
+@@ -869,6 +1470,23 @@ public:
  
      std::map<compiler::BasicBlock*, es2panda::ir::BlockStatement*> phiref2pendingredundant;
  

@@ -600,6 +600,10 @@ public:
         }else if(literal.IsStringValue() || literal.tag_ == panda::panda_file::LiteralTag::LITERALARRAY ){
             panda::es2panda::util::StringView literal_strview(* new std::string(std::get<std::string>(literal.value_)));
             tmp = AllocNode<panda::es2panda::ir::StringLiteral>(this, literal_strview);
+        }else if(literal.tag_ == panda::panda_file::LiteralTag::NULLVALUE){
+            // An explicit `null` value in a literal object/array (e.g. `port: null`)
+            // — was falling through to the unsupported case / rendered as 0.
+            tmp = AllocNode<panda::es2panda::ir::NullLiteral>(this);
         }else{
             // METHODAFFILIATE = 0x0a  
             // ASYNCMETHOD = 0x18
