@@ -221,18 +221,66 @@ void panda::bytecodeopt::AstGen::VisitEcma(panda::compiler::GraphVisitor *visito
             // would make those reads see the NEW counter, an off-by-one.
             bool feeds_phi = false;
             bool has_other_user = false;
+            bool feeds_ref_store = false;  // a user writes the bumped value back to a
+                                           // mutable REFERENCE (field/global/lex/module)
             for(auto& u : inst->GetUsers()){
                 if(u.GetInst() == nullptr){
                     continue;
                 }
-                if(u.GetInst()->IsPhi()){
+                auto* uinst = u.GetInst();
+                if(uinst->IsPhi()){
                     feeds_phi = true;
                 }else{
                     has_other_user = true;
                 }
+                if(uinst->IsIntrinsic()){
+                    switch(uinst->CastToIntrinsic()->GetIntrinsicId()){
+                        case compiler::RuntimeInterface::IntrinsicId::STOBJBYNAME_IMM8_ID16_V8:
+                        case compiler::RuntimeInterface::IntrinsicId::STOBJBYNAME_IMM16_ID16_V8:
+                        case compiler::RuntimeInterface::IntrinsicId::STTHISBYNAME_IMM8_ID16:
+                        case compiler::RuntimeInterface::IntrinsicId::STTHISBYNAME_IMM16_ID16:
+                        case compiler::RuntimeInterface::IntrinsicId::STOBJBYVALUE_IMM8_V8_V8:
+                        case compiler::RuntimeInterface::IntrinsicId::STOBJBYVALUE_IMM16_V8_V8:
+                        case compiler::RuntimeInterface::IntrinsicId::STGLOBALVAR_IMM16_ID16:
+                        case compiler::RuntimeInterface::IntrinsicId::STLEXVAR_IMM4_IMM4:
+                        case compiler::RuntimeInterface::IntrinsicId::STLEXVAR_IMM8_IMM8:
+                        case compiler::RuntimeInterface::IntrinsicId::STMODULEVAR_IMM8:
+                            feeds_ref_store = true;
+                            break;
+                        default:
+                            break;
+                    }
+                }
             }
             if(feeds_phi && !has_other_user){
                 enc->SetExpressionByRegister(inst, inst->GetDstReg(), binexpression);
+            }else if(!inst->HasSingleUser() && feeds_ref_store){
+                // Captured pre/post-increment (`const gen = ++this.seq`): the bumped
+                // value is consumed at MORE THAN ONE site — a store (`stobjbyname`/
+                // `stglobalvar`/`stlexvar`/…) that writes the NEW value back into the
+                // source REFERENCE, AND a separate read that captures it. The source
+                // operand (`this.seq`) is a MUTABLE reference the store overwrites; if
+                // we inline the low-complexity `this.seq + 1` at both sites, the second
+                // use re-reads the already-incremented field and adds 1 AGAIN — an
+                // off-by-one that made `gen` equal `seq + 1`, so a later guard
+                // `if (gen !== this.seq)` was always true (the function always
+                // early-returned). Materialise into a temp `vN = src + 1` captured
+                // BEFORE the store, so both the write-back and the capture share the
+                // one evaluated value. (DetectComplexOfAST for `member + 1` is only 3,
+                // below the auto-materialise threshold, which is why this needs an
+                // explicit case.) Guard on `feeds_ref_store` so we do NOT materialise
+                // apply/spread ABI plumbing (`[...arr].length + 1`), whose inc has
+                // multiple users but no store-back — that would emit a dead, spread-
+                // re-evaluating `vN = [...arr].length + 1`.
+                auto curtargetid = inst->GetId();
+                auto dst_reg_identifier = enc->GetIdentifierByReg(curtargetid);
+                auto assignexpression = AllocNode<es2panda::ir::AssignmentExpression>(enc,
+                                                    dst_reg_identifier,
+                                                    binexpression,
+                                                    es2panda::lexer::TokenType::PUNCTUATOR_SUBSTITUTION);
+                auto assignstatement = AllocNode<es2panda::ir::ExpressionStatement>(enc, assignexpression);
+                enc->AddInstAst2BlockStatemntByInst(inst, assignstatement);
+                enc->SetExpressionByRegister(inst, inst->GetDstReg(), dst_reg_identifier);
             }else{
                 enc->HandleNewCreatedExpression(inst, binexpression);
             }
