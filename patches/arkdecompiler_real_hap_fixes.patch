@@ -438,7 +438,7 @@ index 44f8b86..1a43b61 100644
  
      enc->specialblockid.insert(tryblock->GetId());
 diff --git a/astgen.cpp b/astgen.cpp
-index 71c57ff..7b471b3 100644
+index 71c57ff..df437b0 100644
 --- a/astgen.cpp
 +++ b/astgen.cpp
 @@ -124,7 +124,35 @@ bool AstGen::RunImpl()
@@ -478,7 +478,22 @@ index 71c57ff..7b471b3 100644
              this->phiref2pendingredundant.erase(bb);
          }
          
-@@ -150,7 +178,7 @@ void AstGen::VisitSpillFill(GraphVisitor *visitor, Inst *inst_base)
+@@ -133,6 +161,14 @@ bool AstGen::RunImpl()
+     if (!GetStatus()) {
+         return false;
+     }
++
++    // Final pass: append each registered `continue`-shaped loop's induction step
++    // to the TAIL of its (now fully built) while-body container, so `i = i +/- N`
++    // runs every iteration including the continue path. Done here (not during
++    // while-construction) because the body is empty at construction time —
++    // appending then would put the step at the body TOP (off-by-one).
++    this->FlushLatchHoists();
++
+     // Visit try-blocks in order they were declared
+     for (auto *bb : GetGraph()->GetTryBeginBlocks()) {
+         VisitTryBegin(bb);
+@@ -150,7 +186,7 @@ void AstGen::VisitSpillFill(GraphVisitor *visitor, Inst *inst_base)
  
      for (auto sf : inst->GetSpillFills()) {
          if(sf.SrcType() != compiler::LocationType::REGISTER || sf.DstType() != compiler::LocationType::REGISTER ){
@@ -487,7 +502,7 @@ index 71c57ff..7b471b3 100644
          }
          auto it = enc->reg2expression.find(sf.SrcValue());
          if (it == enc->reg2expression.end()) {
-@@ -281,6 +309,8 @@ void AstGen::VisitIf(GraphVisitor *v, Inst *inst_base)
+@@ -281,6 +317,8 @@ void AstGen::VisitIf(GraphVisitor *v, Inst *inst_base)
      std::cout << "[-] VisitIf  >>>>>>>>>>>>>>>>>" << std::endl;
  }
  
@@ -496,7 +511,7 @@ index 71c57ff..7b471b3 100644
  uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
      //std::cout << "if block: " << std::to_string(father->GetId()) << std::endl;
      auto true_branch = father->GetTrueSuccessor();
-@@ -305,7 +335,58 @@ uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
+@@ -305,7 +343,58 @@ uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
      }else if(true_branch->GetPredsBlocks().size() == 1 && false_branch->GetPredsBlocks().size() == 1){
          return 0;
      }else{
@@ -556,7 +571,7 @@ index 71c57ff..7b471b3 100644
      }
  
      BasicBlock* other_father = nullptr;
-@@ -365,7 +446,7 @@ uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
+@@ -365,7 +454,7 @@ uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
          return 0;
      }else{
          //std::cout << "end other_father: " << std::to_string(other_father->GetId()) << std::endl;
@@ -565,7 +580,7 @@ index 71c57ff..7b471b3 100644
      }
      
      return 0;
-@@ -373,16 +454,21 @@ uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
+@@ -373,16 +462,21 @@ uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
  
  panda::es2panda::ir::Expression* AstGen::InverseTestExpression(AstGen *enc, Inst* inst_base, uint32_t ret, panda::es2panda::ir::Expression* src_expression, bool swap_truefalse){
      [[maybe_unused]] auto inst = inst_base->CastToIfImm();
@@ -594,7 +609,7 @@ index 71c57ff..7b471b3 100644
              return new_src_expression;
          }else{
              return src_expression;
-@@ -403,7 +489,7 @@ panda::es2panda::ir::Expression* AstGen::InverseTestExpression(AstGen *enc, Inst
+@@ -403,7 +497,7 @@ panda::es2panda::ir::Expression* AstGen::InverseTestExpression(AstGen *enc, Inst
              }       
          }
  
@@ -603,7 +618,7 @@ index 71c57ff..7b471b3 100644
                                                      src_expression,
                                                      enc->constant_zero,
                                                      BinIntrinsicIdToToken(cmpid));
-@@ -432,9 +518,44 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
+@@ -432,9 +526,44 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
      auto imm = inst->GetImm();
      auto block = inst->GetBasicBlock();
      panda::es2panda::ir::Expression* test_expression;
@@ -648,7 +663,7 @@ index 71c57ff..7b471b3 100644
          auto ret = onlyOneBranch(inst->GetBasicBlock(), enc);
  
          es2panda::ir::Statement* true_statements = nullptr;
-@@ -501,10 +622,36 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
+@@ -501,10 +630,36 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
                  std::cout << "#VisitIfImm ret case: " << ret << std::endl;
                  enc->specialblockid.insert(block->GetTrueSuccessor()->GetId());
                  true_statements =   enc->GetBlockStatementById(block->GetTrueSuccessor());
@@ -685,7 +700,49 @@ index 71c57ff..7b471b3 100644
              }
          /////////////////////////////////////////////////////////////////////////////////////////////////
          /////////////////////////////////////////////////////////////////////////////////////////////////
-@@ -637,6 +784,28 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
+@@ -600,6 +755,16 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
+                 enc->inserted_statements.insert(true_statements);
+             }
+ 
++            // `continue`-shaped loop: register this while's EXACT body container so a
++            // single-latch induction step (`i = i +/- N`, parked in
++            // phiref2pendingredundant[latch]) can be appended to its TAIL in the final
++            // post-RPO pass (when the body is fully built). `true_statements` is the
++            // body container in both while case 1 (post-swap) and case 2. Doing the
++            // append now would land the step at the body TOP (it is empty here) — an
++            // off-by-one. Registering by exact object avoids any re-resolution
++            // mismatch. No-op for normal loops (handled by RegisterLatchHoist's guards).
++            enc->RegisterLatchHoist(loop, true_statements);
++
+             enc->AddInstAst2BlockStatemntByInst(inst, whilestatement);
+             enc->AddInstAst2BlockStatemntByBlock(loop->GetPreHeader(), enc->GetBlockStatementById(block));
+             if(false_statements != nullptr){
+@@ -617,9 +782,21 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
+                 ifStatement = AllocNode<es2panda::ir::IfStatement>(enc, test_expression, true_statements, false_statements);
+             }else{
+                 if(inst->GetCc() == compiler::CC_EQ){
+-                    std::cout << "if case 2" << std::endl;
+-                    std::swap(true_statements, false_statements);
+-                    test_expression = enc->InverseTestExpression(enc, inst, ret, src_expression, true);
++                    if(false_statements != nullptr){
++                        std::cout << "if case 2" << std::endl;
++                        std::swap(true_statements, false_statements);
++                        test_expression = enc->InverseTestExpression(enc, inst, ret, src_expression, true);
++                    }else{
++                        // Single-branch `if` with NO captured else — the
++                        // `continue`-at-body-head shape (dropped successor is the loop
++                        // latch). Swapping a null over the body would null the
++                        // consequent and the emit-guard below (`true_statements !=
++                        // nullptr`) would DROP the whole if -> empty `while(){}`. Keep
++                        // the body as the consequent and invert the CC_EQ test in place
++                        // (`!==` -> `===`).
++                        std::cout << "if case 2b" << std::endl;
++                        test_expression = enc->InverseTestExpression(enc, inst, ret, src_expression, false);
++                    }
+                 }else{
+                     std::cout << "if case 3" << std::endl;
+                     test_expression = enc->InverseTestExpression(enc, inst, ret, src_expression, false);
+@@ -637,6 +814,28 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
  
              if(true_statements != nullptr){
                  enc->AddInstAst2BlockStatemntByInst(inst, ifStatement);
@@ -714,7 +771,7 @@ index 71c57ff..7b471b3 100644
              }
              std::cout << "[-] if ===" << std::endl;
  
-@@ -646,7 +815,7 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
+@@ -646,7 +845,7 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
          //true_statements->SetParent(block);
          //false_statements->SetParent(block);
      }else{
@@ -1249,7 +1306,7 @@ index 827f82b..fd866db 100644
      }
  }
 diff --git a/astgen.h b/astgen.h
-index bdc9d68..bc27628 100644
+index bdc9d68..7d1b674 100644
 --- a/astgen.h
 +++ b/astgen.h
 @@ -21,7 +21,9 @@ public:
@@ -1365,7 +1422,7 @@ index bdc9d68..bc27628 100644
          }else{
              // METHODAFFILIATE = 0x0a  
              // ASYNCMETHOD = 0x18
-@@ -576,6 +646,558 @@ public:
+@@ -576,6 +646,723 @@ public:
          return false;
      }
  
@@ -1838,6 +1895,171 @@ index bdc9d68..bc27628 100644
 +        return false;
 +    }
 +
++    // `continue`-shaped loop latch hoist — REGISTER phase (called at while
++    // construction with the EXACT body container the while wraps). A loop whose
++    // body starts with `if(cond){continue}` lowers to a body-if whose not-matched
++    // edge goes straight to the latch (the increment block). onlyOneBranch drops
++    // that edge (so the latch is never a branch body), and the back-edge induction
++    // step `i = i +/- N` is parked in phiref2pendingredundant[latch]. We pull that
++    // parked step out and register (body_container, step) so FlushLatchHoists can
++    // append it at the body TAIL after the body is fully built. We DO NOT touch the
++    // latch's own block container (it carries nothing else), and never alias any
++    // BlockStatement — so no structural cycle (the prior SIGSEGV) and no risk of
++    // emptying a woven branch (the prior content-drop).
++    //
++    // Guards (so normal loops are untouched): exactly ONE back-edge; the latch is
++    // not the header itself; a parked entry exists for the latch and is a LONE
++    // statement of the form `id = id <op> <number-literal>` (a pure induction step).
++    void RegisterLatchHoist(compiler::Loop* loop, es2panda::ir::Statement* body_stmt){
++        if(loop == nullptr || body_stmt == nullptr || !body_stmt->IsBlockStatement()){
++            return;
++        }
++        es2panda::ir::BlockStatement* body_container = body_stmt->AsBlockStatement();
++        auto& back_edges = loop->GetBackEdges();
++        if(back_edges.size() != 1){
++            return;  // multi-latch / irreducible: leave alone
++        }
++        BasicBlock* latch = back_edges[0];
++        if(latch == nullptr || latch == loop->GetHeader()){
++            return;
++        }
++        auto it = this->phiref2pendingredundant.find(latch);
++        if(it == this->phiref2pendingredundant.end()){
++            return;  // nothing deferred for this latch (normal loop placement)
++        }
++        es2panda::ir::BlockStatement* pend = it->second;
++        if(pend == nullptr || pend->Statements().size() != 1){
++            return;  // not a lone step — leave to the default flush
++        }
++        if(!IsLoneInductionStep(pend->Statements()[0])){
++            return;
++        }
++        // Do NOT erase the phiref entry: let the normal RunImpl flush place the step
++        // wrapper into the latch's own container (the body-if's else/branch). That
++        // keeps the surrounding branch structure (e.g. `if(HitDom){...}else{step}`)
++        // intact — erasing it early disturbs the latch container's resolution timing
++        // and drops the sibling branch. Instead remember (latch, body_container) and
++        // in FlushLatchHoists MOVE the placed step wrapper out of the latch container
++        // to the body tail (after everything is built), so it advances every iteration
++        // including the continue path while no content is lost.
++        this->latchhoist_.push_back(std::make_pair(latch, body_container));
++    }
++
++    // If the latch container is the CONSEQUENT (then-branch) of some emitted
++    // IfStatement, return that IfStatement; else nullptr. (Emptying a then-branch
++    // makes the renderer drop the whole if + its else, losing content — so before
++    // hoisting the step out we must invert such an if so the soon-to-be-empty
++    // branch becomes the else, which drops harmlessly.)
++    es2panda::ir::IfStatement* FindIfWithLatchAsConsequent(es2panda::ir::Statement* latch_container){
++        for(auto& kv : this->block2ifstatement_){
++            es2panda::ir::IfStatement* ifs = kv.second;
++            if(ifs != nullptr && ifs->Consequent() == latch_container){
++                return ifs;
++            }
++        }
++        return nullptr;
++    }
++
++    // `id = id <op> <number-literal>` — a pure loop induction step.
++    bool IsLoneInductionStep(es2panda::ir::Statement* st){
++        if(st == nullptr || !st->IsExpressionStatement()){
++            return false;
++        }
++        auto* expr = st->AsExpressionStatement()->GetExpression();
++        if(!expr->IsAssignmentExpression()){
++            return false;
++        }
++        auto* asg = expr->AsAssignmentExpression();
++        if(!asg->Left()->IsIdentifier() || !asg->Right()->IsBinaryExpression()){
++            return false;
++        }
++        auto* be = asg->Right()->AsBinaryExpression();
++        return be->Left()->IsIdentifier() &&
++               be->Left()->AsIdentifier()->Name().Mutf8() ==
++                   asg->Left()->AsIdentifier()->Name().Mutf8() &&
++               be->Right()->IsNumberLiteral();
++    }
++
++    // FLUSH phase (called once after the RPO loop): for each registered latch, find
++    // its induction-step wrapper (placed by the normal flush into the latch's own
++    // container, i.e. the body-if branch), REMOVE it from there, and append it at the
++    // loop-body container's TAIL. Moving (not early-erasing) preserves the branch
++    // structure and loses no sibling content; appending post-RPO guarantees the body
++    // is fully built so the step lands last (runs every iteration / continue path).
++    void FlushLatchHoists(){
++        for(auto& kv : this->latchhoist_){
++            BasicBlock* latch = kv.first;
++            es2panda::ir::BlockStatement* body = kv.second;
++            if(latch == nullptr || body == nullptr){
++                continue;
++            }
++            auto lit = this->id2block.find(latch->GetId());
++            if(lit == this->id2block.end() || lit->second == nullptr){
++                continue;
++            }
++            es2panda::ir::BlockStatement* latch_container = lit->second;
++            if(latch_container == body){
++                continue;  // already at body level; nothing to move
++            }
++            // SAFETY GATE: if the latch container is the THEN-branch (consequent) of an
++            // if whose ELSE (alternate) is non-empty, removing the step empties the
++            // then-branch and the renderer drops the WHOLE if (losing the else's real
++            // content, e.g. `record(); return`). We cannot invert in place (es2panda
++            // IfStatement is immutable here). So leave those (deeply-nested reverse-loop
++            // latches) at their existing placement — content-preserving, still a strict
++            // improvement over the prior empty `while(){}`. An ELSE-branch latch (the
++            // common `if(done){return}else{i++}` continue shape) empties harmlessly and
++            // IS hoisted.
++            if(latch_container->Statements().size() == 1){
++                es2panda::ir::IfStatement* owner = this->FindIfWithLatchAsConsequent(latch_container);
++                if(owner != nullptr){
++                    // Emptying this then-branch lets the renderer drop the whole if.
++                    // Skip the hoist (keep the step where it is — content-safe) when
++                    // dropping the if would lose real content:
++                    //  (a) the if has a non-empty ELSE branch, or
++                    //  (b) the if's TEST contains a CALL (side effects) — e.g. a
++                    //      `while(...){ if(scanCall(x)){i++} }` scan whose work IS the
++                    //      condition call (homowarden::moveNodeById). Dropping the if
++                    //      would delete the side-effecting call.
++                    bool alt_nonempty = owner->Alternate() != nullptr &&
++                                        (!owner->Alternate()->IsBlockStatement() ||
++                                         owner->Alternate()->AsBlockStatement()->Statements().size() > 0);
++                    bool test_has_call = ExpressionContainsCall(
++                        const_cast<es2panda::ir::Expression*>(owner->Test()));
++                    if(alt_nonempty || test_has_call){
++                        continue;  // would drop content — leave step in place
++                    }
++                }
++            }
++            // Find the lone-induction-step (possibly wrapped one level) in the latch
++            // container, and rebuild the container WITHOUT it (avoid ArenaVector::erase
++            // mid-iteration, which can corrupt the vector and drop sibling content).
++            auto& src = latch_container->statements_;
++            es2panda::ir::Statement* moved = nullptr;
++            ArenaVector<es2panda::ir::Statement*> kept(this->parser_program_->Allocator()->Adapter());
++            for(es2panda::ir::Statement* cand : src){
++                es2panda::ir::Statement* probe = cand;
++                if(moved == nullptr && cand->IsBlockStatement() &&
++                   cand->AsBlockStatement()->Statements().size() == 1){
++                    probe = cand->AsBlockStatement()->Statements()[0];
++                }
++                if(moved == nullptr && IsLoneInductionStep(probe)){
++                    moved = cand;  // drop exactly the first matching step
++                    continue;
++                }
++                kept.push_back(cand);
++            }
++            if(moved != nullptr){
++                src.clear();
++                for(es2panda::ir::Statement* s : kept){
++                    src.push_back(s);                // container minus the step
++                }
++                body->statements_.push_back(moved);  // append at the very end of body
++            }
++        }
++        this->latchhoist_.clear();
++    }
++
 +    // Detect the short-circuit (a||b / a&&b) shape at a phi.
 +    //   - phi P has exactly 2 inputs.
 +    //   - one input value `cond` comes from a predecessor `condbb` that ends in
@@ -1924,7 +2146,7 @@ index bdc9d68..bc27628 100644
      std::optional<std::string> GetNameFromExpression(es2panda::ir::Expression* rawexpression){
          if(rawexpression->IsIdentifier()){
              auto objname = rawexpression->AsIdentifier()->Name().Mutf8();
-@@ -590,12 +1212,8 @@ public:
+@@ -590,12 +1377,8 @@ public:
              auto objname = GetNameFromExpression(rawobj);
              auto propname = GetNameFromExpression(rawprop);
  
@@ -1939,7 +2161,7 @@ index bdc9d68..bc27628 100644
          }else if(rawexpression->IsCallExpression()){
              auto callee = rawexpression->AsCallExpression()->Callee();
              if(callee->IsFunctionExpression()){
-@@ -605,7 +1223,10 @@ public:
+@@ -605,7 +1388,10 @@ public:
                  return GetNameFromExpression(callee);
              }else{
                  std::cout << "###: " << std::to_string(static_cast<int>(callee->Type())) << std::endl;
@@ -1951,7 +2173,7 @@ index bdc9d68..bc27628 100644
              }
          }else if(rawexpression->IsNullLiteral() ){
              return "null";
-@@ -620,6 +1241,14 @@ public:
+@@ -620,6 +1406,14 @@ public:
          }else if(rawexpression->IsNewExpression()){
              auto callee = rawexpression->AsNewExpression()->Callee();
              return GetNameFromExpression(const_cast<es2panda::ir::Expression*>(callee));
@@ -1966,7 +2188,7 @@ index bdc9d68..bc27628 100644
          }else if(rawexpression->IsBinaryExpression()){
              auto binexpression = rawexpression->AsBinaryExpression();
              auto tokentype = es2panda::lexer::TokenToString(binexpression->OperatorType());
-@@ -627,12 +1256,8 @@ public:
+@@ -627,12 +1421,8 @@ public:
              auto left = GetNameFromExpression(binexpression->Left());
              auto right = GetNameFromExpression(binexpression->Right());
  
@@ -1981,7 +2203,7 @@ index bdc9d68..bc27628 100644
          }else if(rawexpression->IsArrayExpression()){
              std::stringstream ss_;
              int count = 0;
-@@ -688,7 +1313,8 @@ public:
+@@ -688,7 +1478,8 @@ public:
              return ss_.str();
          }else{
              std::cout << "###1: " << std::to_string(static_cast<int>(rawexpression->Type())) << std::endl;
@@ -1991,7 +2213,7 @@ index bdc9d68..bc27628 100644
          }
          return nullptr;
      }
-@@ -824,6 +1450,8 @@ public:
+@@ -824,6 +1615,8 @@ public:
  
      std::map<size_t, std::vector<std::string>> index2namespaces_;
      std::vector<std::string> localnamespaces_;
@@ -2000,10 +2222,15 @@ index bdc9d68..bc27628 100644
      std::map<uint32_t, std::set<uint32_t>> *class2memberfuns_;
      std::map<uint32_t, panda::es2panda::ir::ScriptFunction *> *method2scriptfunast_;
      std::map<uint32_t, panda::es2panda::ir::ClassDeclaration *>* ctor2classdeclast_;
-@@ -869,6 +1497,23 @@ public:
+@@ -869,6 +1662,28 @@ public:
  
      std::map<compiler::BasicBlock*, es2panda::ir::BlockStatement*> phiref2pendingredundant;
  
++    // `continue`-shaped loop latch hoist queue: (while-body container, induction
++    // step) pairs registered at while-construction, flushed at the body tail after
++    // the RPO loop. See RegisterLatchHoist / FlushLatchHoists.
++    std::vector<std::pair<compiler::BasicBlock*, es2panda::ir::BlockStatement*>> latchhoist_;
++
 +    // Short-circuit boolean reconstruction (a||b / a&&b). When a condition block
 +    // feeds its own tested value into a phi at a direct-successor merge block, the
 +    // diamond CFG is really a logical expression, not an if-statement. We collect
