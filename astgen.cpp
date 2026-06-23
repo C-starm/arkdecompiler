@@ -161,6 +161,14 @@ bool AstGen::RunImpl()
     if (!GetStatus()) {
         return false;
     }
+
+    // Final pass: append each registered `continue`-shaped loop's induction step
+    // to the TAIL of its (now fully built) while-body container, so `i = i +/- N`
+    // runs every iteration including the continue path. Done here (not during
+    // while-construction) because the body is empty at construction time —
+    // appending then would put the step at the body TOP (off-by-one).
+    this->FlushLatchHoists();
+
     // Visit try-blocks in order they were declared
     for (auto *bb : GetGraph()->GetTryBeginBlocks()) {
         VisitTryBegin(bb);
@@ -747,6 +755,16 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
                 enc->inserted_statements.insert(true_statements);
             }
 
+            // `continue`-shaped loop: register this while's EXACT body container so a
+            // single-latch induction step (`i = i +/- N`, parked in
+            // phiref2pendingredundant[latch]) can be appended to its TAIL in the final
+            // post-RPO pass (when the body is fully built). `true_statements` is the
+            // body container in both while case 1 (post-swap) and case 2. Doing the
+            // append now would land the step at the body TOP (it is empty here) — an
+            // off-by-one. Registering by exact object avoids any re-resolution
+            // mismatch. No-op for normal loops (handled by RegisterLatchHoist's guards).
+            enc->RegisterLatchHoist(loop, true_statements);
+
             enc->AddInstAst2BlockStatemntByInst(inst, whilestatement);
             enc->AddInstAst2BlockStatemntByBlock(loop->GetPreHeader(), enc->GetBlockStatementById(block));
             if(false_statements != nullptr){
@@ -764,9 +782,21 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
                 ifStatement = AllocNode<es2panda::ir::IfStatement>(enc, test_expression, true_statements, false_statements);
             }else{
                 if(inst->GetCc() == compiler::CC_EQ){
-                    std::cout << "if case 2" << std::endl;
-                    std::swap(true_statements, false_statements);
-                    test_expression = enc->InverseTestExpression(enc, inst, ret, src_expression, true);
+                    if(false_statements != nullptr){
+                        std::cout << "if case 2" << std::endl;
+                        std::swap(true_statements, false_statements);
+                        test_expression = enc->InverseTestExpression(enc, inst, ret, src_expression, true);
+                    }else{
+                        // Single-branch `if` with NO captured else — the
+                        // `continue`-at-body-head shape (dropped successor is the loop
+                        // latch). Swapping a null over the body would null the
+                        // consequent and the emit-guard below (`true_statements !=
+                        // nullptr`) would DROP the whole if -> empty `while(){}`. Keep
+                        // the body as the consequent and invert the CC_EQ test in place
+                        // (`!==` -> `===`).
+                        std::cout << "if case 2b" << std::endl;
+                        test_expression = enc->InverseTestExpression(enc, inst, ret, src_expression, false);
+                    }
                 }else{
                     std::cout << "if case 3" << std::endl;
                     test_expression = enc->InverseTestExpression(enc, inst, ret, src_expression, false);

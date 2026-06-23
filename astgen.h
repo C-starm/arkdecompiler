@@ -1115,6 +1115,171 @@ public:
         return false;
     }
 
+    // `continue`-shaped loop latch hoist — REGISTER phase (called at while
+    // construction with the EXACT body container the while wraps). A loop whose
+    // body starts with `if(cond){continue}` lowers to a body-if whose not-matched
+    // edge goes straight to the latch (the increment block). onlyOneBranch drops
+    // that edge (so the latch is never a branch body), and the back-edge induction
+    // step `i = i +/- N` is parked in phiref2pendingredundant[latch]. We pull that
+    // parked step out and register (body_container, step) so FlushLatchHoists can
+    // append it at the body TAIL after the body is fully built. We DO NOT touch the
+    // latch's own block container (it carries nothing else), and never alias any
+    // BlockStatement — so no structural cycle (the prior SIGSEGV) and no risk of
+    // emptying a woven branch (the prior content-drop).
+    //
+    // Guards (so normal loops are untouched): exactly ONE back-edge; the latch is
+    // not the header itself; a parked entry exists for the latch and is a LONE
+    // statement of the form `id = id <op> <number-literal>` (a pure induction step).
+    void RegisterLatchHoist(compiler::Loop* loop, es2panda::ir::Statement* body_stmt){
+        if(loop == nullptr || body_stmt == nullptr || !body_stmt->IsBlockStatement()){
+            return;
+        }
+        es2panda::ir::BlockStatement* body_container = body_stmt->AsBlockStatement();
+        auto& back_edges = loop->GetBackEdges();
+        if(back_edges.size() != 1){
+            return;  // multi-latch / irreducible: leave alone
+        }
+        BasicBlock* latch = back_edges[0];
+        if(latch == nullptr || latch == loop->GetHeader()){
+            return;
+        }
+        auto it = this->phiref2pendingredundant.find(latch);
+        if(it == this->phiref2pendingredundant.end()){
+            return;  // nothing deferred for this latch (normal loop placement)
+        }
+        es2panda::ir::BlockStatement* pend = it->second;
+        if(pend == nullptr || pend->Statements().size() != 1){
+            return;  // not a lone step — leave to the default flush
+        }
+        if(!IsLoneInductionStep(pend->Statements()[0])){
+            return;
+        }
+        // Do NOT erase the phiref entry: let the normal RunImpl flush place the step
+        // wrapper into the latch's own container (the body-if's else/branch). That
+        // keeps the surrounding branch structure (e.g. `if(HitDom){...}else{step}`)
+        // intact — erasing it early disturbs the latch container's resolution timing
+        // and drops the sibling branch. Instead remember (latch, body_container) and
+        // in FlushLatchHoists MOVE the placed step wrapper out of the latch container
+        // to the body tail (after everything is built), so it advances every iteration
+        // including the continue path while no content is lost.
+        this->latchhoist_.push_back(std::make_pair(latch, body_container));
+    }
+
+    // If the latch container is the CONSEQUENT (then-branch) of some emitted
+    // IfStatement, return that IfStatement; else nullptr. (Emptying a then-branch
+    // makes the renderer drop the whole if + its else, losing content — so before
+    // hoisting the step out we must invert such an if so the soon-to-be-empty
+    // branch becomes the else, which drops harmlessly.)
+    es2panda::ir::IfStatement* FindIfWithLatchAsConsequent(es2panda::ir::Statement* latch_container){
+        for(auto& kv : this->block2ifstatement_){
+            es2panda::ir::IfStatement* ifs = kv.second;
+            if(ifs != nullptr && ifs->Consequent() == latch_container){
+                return ifs;
+            }
+        }
+        return nullptr;
+    }
+
+    // `id = id <op> <number-literal>` — a pure loop induction step.
+    bool IsLoneInductionStep(es2panda::ir::Statement* st){
+        if(st == nullptr || !st->IsExpressionStatement()){
+            return false;
+        }
+        auto* expr = st->AsExpressionStatement()->GetExpression();
+        if(!expr->IsAssignmentExpression()){
+            return false;
+        }
+        auto* asg = expr->AsAssignmentExpression();
+        if(!asg->Left()->IsIdentifier() || !asg->Right()->IsBinaryExpression()){
+            return false;
+        }
+        auto* be = asg->Right()->AsBinaryExpression();
+        return be->Left()->IsIdentifier() &&
+               be->Left()->AsIdentifier()->Name().Mutf8() ==
+                   asg->Left()->AsIdentifier()->Name().Mutf8() &&
+               be->Right()->IsNumberLiteral();
+    }
+
+    // FLUSH phase (called once after the RPO loop): for each registered latch, find
+    // its induction-step wrapper (placed by the normal flush into the latch's own
+    // container, i.e. the body-if branch), REMOVE it from there, and append it at the
+    // loop-body container's TAIL. Moving (not early-erasing) preserves the branch
+    // structure and loses no sibling content; appending post-RPO guarantees the body
+    // is fully built so the step lands last (runs every iteration / continue path).
+    void FlushLatchHoists(){
+        for(auto& kv : this->latchhoist_){
+            BasicBlock* latch = kv.first;
+            es2panda::ir::BlockStatement* body = kv.second;
+            if(latch == nullptr || body == nullptr){
+                continue;
+            }
+            auto lit = this->id2block.find(latch->GetId());
+            if(lit == this->id2block.end() || lit->second == nullptr){
+                continue;
+            }
+            es2panda::ir::BlockStatement* latch_container = lit->second;
+            if(latch_container == body){
+                continue;  // already at body level; nothing to move
+            }
+            // SAFETY GATE: if the latch container is the THEN-branch (consequent) of an
+            // if whose ELSE (alternate) is non-empty, removing the step empties the
+            // then-branch and the renderer drops the WHOLE if (losing the else's real
+            // content, e.g. `record(); return`). We cannot invert in place (es2panda
+            // IfStatement is immutable here). So leave those (deeply-nested reverse-loop
+            // latches) at their existing placement — content-preserving, still a strict
+            // improvement over the prior empty `while(){}`. An ELSE-branch latch (the
+            // common `if(done){return}else{i++}` continue shape) empties harmlessly and
+            // IS hoisted.
+            if(latch_container->Statements().size() == 1){
+                es2panda::ir::IfStatement* owner = this->FindIfWithLatchAsConsequent(latch_container);
+                if(owner != nullptr){
+                    // Emptying this then-branch lets the renderer drop the whole if.
+                    // Skip the hoist (keep the step where it is — content-safe) when
+                    // dropping the if would lose real content:
+                    //  (a) the if has a non-empty ELSE branch, or
+                    //  (b) the if's TEST contains a CALL (side effects) — e.g. a
+                    //      `while(...){ if(scanCall(x)){i++} }` scan whose work IS the
+                    //      condition call (homowarden::moveNodeById). Dropping the if
+                    //      would delete the side-effecting call.
+                    bool alt_nonempty = owner->Alternate() != nullptr &&
+                                        (!owner->Alternate()->IsBlockStatement() ||
+                                         owner->Alternate()->AsBlockStatement()->Statements().size() > 0);
+                    bool test_has_call = ExpressionContainsCall(
+                        const_cast<es2panda::ir::Expression*>(owner->Test()));
+                    if(alt_nonempty || test_has_call){
+                        continue;  // would drop content — leave step in place
+                    }
+                }
+            }
+            // Find the lone-induction-step (possibly wrapped one level) in the latch
+            // container, and rebuild the container WITHOUT it (avoid ArenaVector::erase
+            // mid-iteration, which can corrupt the vector and drop sibling content).
+            auto& src = latch_container->statements_;
+            es2panda::ir::Statement* moved = nullptr;
+            ArenaVector<es2panda::ir::Statement*> kept(this->parser_program_->Allocator()->Adapter());
+            for(es2panda::ir::Statement* cand : src){
+                es2panda::ir::Statement* probe = cand;
+                if(moved == nullptr && cand->IsBlockStatement() &&
+                   cand->AsBlockStatement()->Statements().size() == 1){
+                    probe = cand->AsBlockStatement()->Statements()[0];
+                }
+                if(moved == nullptr && IsLoneInductionStep(probe)){
+                    moved = cand;  // drop exactly the first matching step
+                    continue;
+                }
+                kept.push_back(cand);
+            }
+            if(moved != nullptr){
+                src.clear();
+                for(es2panda::ir::Statement* s : kept){
+                    src.push_back(s);                // container minus the step
+                }
+                body->statements_.push_back(moved);  // append at the very end of body
+            }
+        }
+        this->latchhoist_.clear();
+    }
+
     // Detect the short-circuit (a||b / a&&b) shape at a phi.
     //   - phi P has exactly 2 inputs.
     //   - one input value `cond` comes from a predecessor `condbb` that ends in
@@ -1496,6 +1661,11 @@ public:
     std::map<compiler::BasicBlock*, es2panda::ir::BlockStatement*> whilebody2redundant;
 
     std::map<compiler::BasicBlock*, es2panda::ir::BlockStatement*> phiref2pendingredundant;
+
+    // `continue`-shaped loop latch hoist queue: (while-body container, induction
+    // step) pairs registered at while-construction, flushed at the body tail after
+    // the RPO loop. See RegisterLatchHoist / FlushLatchHoists.
+    std::vector<std::pair<compiler::BasicBlock*, es2panda::ir::BlockStatement*>> latchhoist_;
 
     // Short-circuit boolean reconstruction (a||b / a&&b). When a condition block
     // feeds its own tested value into a phi at a direct-successor merge block, the
