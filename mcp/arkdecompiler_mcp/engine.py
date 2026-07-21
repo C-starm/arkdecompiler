@@ -175,8 +175,17 @@ class Engine:
                 f"cd /w && export LD_LIBRARY_PATH={self.cfg.docker_ld} && "
                 f"{self.cfg.docker_xabc} {abc_path.name} {_OUT_TS}"
             )
-            cmd = ["docker", "run", "--rm", "-v", f"{work}:/w",
-                   self.cfg.docker_image, "bash", "-lc", inner]
+            cmd = ["docker", "run", "--rm", "-v", f"{work}:/w"]
+            # Pass through xabc tuning knobs when set on the host, so callers can
+            # decompile just a subset of a huge HAP (XABC_RECORD_FILTER) or turn
+            # verbose tracing back on (XABC_DEBUG) through the MCP path too. Debug
+            # is OFF by default in the binary, so omitting these keeps the quiet,
+            # non-flooding behaviour.
+            for var in ("XABC_RECORD_FILTER", "XABC_DEBUG"):
+                val = os.environ.get(var)
+                if val:
+                    cmd += ["-e", f"{var}={val}"]
+            cmd += [self.cfg.docker_image, "bash", "-lc", inner]
             return self._finish_run(cmd, work, dict(os.environ), abc_path.name,
                                     want_ast, cwd_for_exec=None)
         finally:
