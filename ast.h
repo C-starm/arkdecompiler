@@ -113,7 +113,7 @@ static T *AllocNode(panda::es2panda::parser::Program *parser_program_, Args &&..
 {
     auto ret = parser_program_->Allocator()->New<T>(std::forward<Args>(args)...);
     if (ret == nullptr) {
-        std::cout << "Unsuccessful allocation during parsing" << std::endl;;
+        XABC_DBG << "Unsuccessful allocation during parsing" << std::endl;;
     }
     return ret;
 }

@@ -186,7 +186,7 @@ void GetModuleLiteralArray(std::unique_ptr<const panda_file::File>& file_, panda
         }else{
             ss << ", EXPORT ";
             exportmaps_arrays.push_back(curmaps);
-            // std::cout << curmaps.count("export_name") << " , " << curmaps.count("import_name") << " , " << curmaps.count("local_name") << " , " << curmaps.count("module_request") << std::endl;
+            // XABC_DBG << curmaps.count("export_name") << " , " << curmaps.count("import_name") << " , " << curmaps.count("local_name") << " , " << curmaps.count("module_request") << std::endl;
             if(curmaps.count("export_name") == 0 && curmaps.count("local_name") == 0){
                 // ExportAllDeclaration
                 AddExportAstAll(parser_program, curmaps["module_request"]);
@@ -202,7 +202,7 @@ void GetModuleLiteralArray(std::unique_ptr<const panda_file::File>& file_, panda
             }
         }
 
-        std::cout << ss.str() << std::endl;;
+        XABC_DBG << ss.str() << std::endl;;
     });
 
     if (recordimportnamespaces != nullptr && !recordname.empty()) {

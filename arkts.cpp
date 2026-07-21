@@ -170,7 +170,7 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
 
     switch(node->Type()){
         case AstNodeType::BINARY_EXPRESSION:{
-            std::cout << "enter BINARY_EXPRESSION >>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+            XABC_DBG << "enter BINARY_EXPRESSION >>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
             auto binexpression = node->AsBinaryExpression();
             int parentPrec = BinaryOpPrecedence(binexpression->OperatorType());
 
@@ -200,7 +200,7 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
         }
 
         case AstNodeType::UNARY_EXPRESSION:{
-            std::cout << "enter UNARY_EXPRESSION >>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
+            XABC_DBG << "enter UNARY_EXPRESSION >>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
             auto unaryexpression = node->AsUnaryExpression();
             ss_ << TokenToString(unaryexpression->OperatorType());
             WriteSpace();
@@ -210,7 +210,7 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
 
         case AstNodeType::ASSIGNMENT_EXPRESSION:{
             auto assignexpression = node->AsAssignmentExpression();
-            std::cout << "enter ASSIGNMENT_EXPRESSION >>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
+            XABC_DBG << "enter ASSIGNMENT_EXPRESSION >>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
             
             this->EmitExpression(assignexpression->Left());
             WriteSpace();
@@ -278,7 +278,7 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
         }
 
         case AstNodeType::OBJECT_EXPRESSION:{
-            std::cout << "enter OBJECT_EXPRESSION >>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
+            XABC_DBG << "enter OBJECT_EXPRESSION >>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
             auto objexpression = node->AsObjectExpression();
             
             WriteLeftBrace();
@@ -317,7 +317,7 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
         }
 
         case AstNodeType::ARRAY_EXPRESSION:{
-            std::cout << "enter OBJECT_EXPRESSION >>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
+            XABC_DBG << "enter OBJECT_EXPRESSION >>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
             auto arrayexpression = node->AsArrayExpression();
             
             WriteLeftBracket();
@@ -417,7 +417,7 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
         }
 
         case AstNodeType::CONDITIONAL_EXPRESSION:{
-            std::cout << "enter CONDITIONAL_EXPRESSION >>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+            XABC_DBG << "enter CONDITIONAL_EXPRESSION >>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
             auto conditionalexpression = node->AsConditionalExpression();
             // Parenthesize: a ternary has very low precedence, so when it appears
             // as a sub-expression (e.g. `a + (c ? x : y)`) it must be wrapped or
@@ -585,7 +585,7 @@ void ArkTSGen::EmitTryStatement(const ir::AstNode *node){
 }
 
 void ArkTSGen::EmitIfStatement(const ir::AstNode *node){
-    std::cout << "[+] start EmitIfStatement"  << std::endl;
+    XABC_DBG << "[+] start EmitIfStatement"  << std::endl;
     auto ifstatement = node->AsIfStatement();
     if(ifstatement->Consequent() == nullptr ||  ifstatement->Consequent()->AsBlockStatement()->Statements().size() == 0){
         this->WriteNewLine();
@@ -624,11 +624,11 @@ void ArkTSGen::EmitIfStatement(const ir::AstNode *node){
     }
     this->WriteNewLine();
     
-    std::cout << "[-] end EmitIfStatement"  << std::endl;
+    XABC_DBG << "[-] end EmitIfStatement"  << std::endl;
 }
 
 void ArkTSGen::EmitWhileStatement(const ir::AstNode *node){
-    std::cout << "[+] start emit while statement"  << std::endl;
+    XABC_DBG << "[+] start emit while statement"  << std::endl;
     auto whilestatement = node->AsWhileStatement();
 
     // while(test){
@@ -649,11 +649,11 @@ void ArkTSGen::EmitWhileStatement(const ir::AstNode *node){
     this->WriteRightBrace();
     this->WriteNewLine();
         
-    std::cout << "[-] end emit while statement"  << std::endl;
+    XABC_DBG << "[-] end emit while statement"  << std::endl;
 }
 
 void ArkTSGen::EmitDoWhileStatement(const ir::AstNode *node){
-    std::cout << "[+] start emit dowhile statement"  << std::endl;
+    XABC_DBG << "[+] start emit dowhile statement"  << std::endl;
     auto dowhilestatement = node->AsDoWhileStatement();
     
     // do {
@@ -674,12 +674,12 @@ void ArkTSGen::EmitDoWhileStatement(const ir::AstNode *node){
     this->EmitExpression(dowhilestatement->Test());
     this->WriteRightParentheses();
     this->WriteTrailingSemicolon();        
-    std::cout << "[-] end emit dowhile statement"  << std::endl;
+    XABC_DBG << "[-] end emit dowhile statement"  << std::endl;
 }
 
 
 void ArkTSGen::EmitImportSpecifier(const ir::AstNode *node){
-    std::cout << "[+] start emit import specifier statement"  << std::endl;
+    XABC_DBG << "[+] start emit import specifier statement"  << std::endl;
     auto importspecifier = node->AsImportSpecifier();
     
     this->WriteKeyWords("import");
@@ -697,7 +697,7 @@ void ArkTSGen::EmitImportSpecifier(const ir::AstNode *node){
 }
 
 void ArkTSGen::EmitImportDeclaration(const ir::AstNode *node){
-    std::cout << "[+] start emit import declaration statement"  << std::endl;
+    XABC_DBG << "[+] start emit import declaration statement"  << std::endl;
     auto importdeclaration = node->AsImportDeclaration();
     
     for (const auto *astnode : importdeclaration->Specifiers()) {
@@ -724,7 +724,7 @@ void ArkTSGen::EmitImportDeclaration(const ir::AstNode *node){
 }
 
 void ArkTSGen::EmitExportAllDeclaration(const ir::AstNode *node){
-    std::cout << "[+] start emit export all declaration statement"  << std::endl;
+    XABC_DBG << "[+] start emit export all declaration statement"  << std::endl;
     auto exportdeclaration = node->AsExportAllDeclaration();
     
     this->WriteKeyWords("export");
@@ -738,7 +738,7 @@ void ArkTSGen::EmitExportAllDeclaration(const ir::AstNode *node){
 }
 
 void ArkTSGen::EmitExportSpecifier(const ir::AstNode *node){
-    std::cout << "[+] start emit export specifier statement"  << std::endl;
+    XABC_DBG << "[+] start emit export specifier statement"  << std::endl;
     auto exportspecifier = node->AsExportSpecifier();
     
     this->WriteKeyWords("export");
@@ -752,7 +752,7 @@ void ArkTSGen::EmitExportSpecifier(const ir::AstNode *node){
 }
 
 void ArkTSGen::EmitExportNamedDeclaration(const ir::AstNode *node){
-    std::cout << "[+] start emit export named declaration statement"  << std::endl;
+    XABC_DBG << "[+] start emit export named declaration statement"  << std::endl;
     auto exportnameddeclaration = node->AsExportNamedDeclaration();
     
     for (const auto *astnode : exportnameddeclaration->Specifiers()) {
@@ -779,13 +779,13 @@ void ArkTSGen::EmitExportNamedDeclaration(const ir::AstNode *node){
 }
 
 void ArkTSGen::EmitClassDeclaration(const ir::AstNode *node){
-    std::cout << "[+] start emit class declaration statement"  << std::endl;
+    XABC_DBG << "[+] start emit class declaration statement"  << std::endl;
     auto classdeclaration = node->AsClassDeclaration();
     auto classdefinition = const_cast<ir::ClassDefinition*>(classdeclaration->Definition());
 
     this->WriteKeyWords("class");
     this->WriteSpace();
-    std::cout << classdefinition->Ident()->Name().Mutf8()  << std::endl;
+    XABC_DBG << classdefinition->Ident()->Name().Mutf8()  << std::endl;
     this->EmitExpression(classdefinition->Ident());
     this->WriteSpace();
 
@@ -818,7 +818,7 @@ void ArkTSGen::EmitClassDeclaration(const ir::AstNode *node){
 }
 
 void ArkTSGen::EmitMethodDefinition(const ir::AstNode *node){
-    std::cout << "[+] start emit method definition statement"  << std::endl;
+    XABC_DBG << "[+] start emit method definition statement"  << std::endl;
     auto methoddefinition = node->AsMethodDefinition();
     
     this->EmitExpression(methoddefinition->Key());
@@ -863,121 +863,121 @@ void ArkTSGen::EmitStatement(const ir::AstNode *node)
         this->WriteIndent();
     }
 
-    std::cout << "emit statement start " << std::endl;
+    XABC_DBG << "emit statement start " << std::endl;
     switch(node->Type()){
         case AstNodeType::EXPRESSION_STATEMENT:
-            std::cout << "enter EXPRESSION_STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+            XABC_DBG << "enter EXPRESSION_STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
             this->EmitExpressionStatement(node); 
             break;
         case AstNodeType::BLOCK_STATEMENT:
-            std::cout << "enter BLOCK_STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
+            XABC_DBG << "enter BLOCK_STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
             this->EmitBlockStatement(node);
             break;
 
         case AstNodeType::VARIABLE_DECLARATION:
-            std::cout << "enter VARIABLE_DECLARATION >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
+            XABC_DBG << "enter VARIABLE_DECLARATION >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
             this->EmitVariableDeclarationStatement(node);
             break;
 
         case AstNodeType::VARIABLE_DECLARATOR:
-            std::cout << "enter VARIABLE_DECLARATO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
+            XABC_DBG << "enter VARIABLE_DECLARATO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
             this->EmitVariableDeclaratorStatement(node);
             break;
 
         case AstNodeType::RETURN_STATEMENT:
-            std::cout << "enter RETURN STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
+            XABC_DBG << "enter RETURN STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
             this->EmitReturnStatement(node);
             break;
 
         case AstNodeType::DEBUGGER_STATEMENT:
-            std::cout << "enter DEBUGGER STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
+            XABC_DBG << "enter DEBUGGER STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
             this->EmitDebuggerStatement(node);
             break;
 
         case AstNodeType::FUNCTION_DECLARATION:
-            std::cout << "enter FUNCTION_DECLARATION STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
+            XABC_DBG << "enter FUNCTION_DECLARATION STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
             this->EmitFunctionDeclaration(node);
             break;
 
         case AstNodeType::IF_STATEMENT:
-            std::cout << "enter IF_STATEMENT STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
+            XABC_DBG << "enter IF_STATEMENT STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
             this->EmitIfStatement(node);
             break;
         
         case AstNodeType::TRY_STATEMENT:
-            std::cout << "enter TRY_STATEMENT STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
+            XABC_DBG << "enter TRY_STATEMENT STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
             this->EmitTryStatement(node);
             break;
 
         case AstNodeType::THROW_STATEMENT:
-            std::cout << "enter THROW_STATEMENT STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
+            XABC_DBG << "enter THROW_STATEMENT STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
             this->EmitThrowStatement(node);
             break;
 
         case AstNodeType::WHILE_STATEMENT:
-            std::cout << "enter WHILE_STATEMENT STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
+            XABC_DBG << "enter WHILE_STATEMENT STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
             this->EmitWhileStatement(node);
             break;
         
         case AstNodeType::DO_WHILE_STATEMENT:
-            std::cout << "enter DOWHILE_STATEMENT STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
+            XABC_DBG << "enter DOWHILE_STATEMENT STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
             this->EmitDoWhileStatement(node);
             break;
 
         case AstNodeType::BREAK_STATEMENT:
-            std::cout << "enter BREAK_STATEMENT STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
+            XABC_DBG << "enter BREAK_STATEMENT STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
             this->EmitBreakStatement(node);
             break;
 
         case AstNodeType::IMPORT_SPECIFIER:{
-            std::cout << "enter ImportSpecifier STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+            XABC_DBG << "enter ImportSpecifier STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
             this->EmitImportSpecifier(node);
             break;
         }
 
         case AstNodeType::IMPORT_DECLARATION:{
-            std::cout << "enter IMPORT_DECLARATION STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+            XABC_DBG << "enter IMPORT_DECLARATION STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
             this->EmitImportDeclaration(node);
             break;
         }
 
         case AstNodeType::EXPORT_ALL_DECLARATION:{
-            std::cout << "enter EXPORT_ALL_DECLARATION STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+            XABC_DBG << "enter EXPORT_ALL_DECLARATION STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
             this->EmitExportAllDeclaration(node);
             break;
         }
 
         case AstNodeType::EXPORT_SPECIFIER:{
-            std::cout << "enter EXPORT_SPECIFIER STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+            XABC_DBG << "enter EXPORT_SPECIFIER STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
             this->EmitExportSpecifier(node);
             break;
         }
 
         case AstNodeType::EXPORT_NAMED_DECLARATION:{
-            std::cout << "enter EXPORT_NAMED_DECLARATION STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+            XABC_DBG << "enter EXPORT_NAMED_DECLARATION STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
             this->EmitExportNamedDeclaration(node);
             break;
         }
 
         case AstNodeType::CLASS_DECLARATION: {
-            std::cout << "enter CLASS_DECLARATION STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+            XABC_DBG << "enter CLASS_DECLARATION STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
             this->EmitClassDeclaration(node);
             break;
         }
 
         case AstNodeType::METHOD_DEFINITION:{
-            std::cout << "enter METHOD_DEFINITION STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+            XABC_DBG << "enter METHOD_DEFINITION STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
             this->EmitMethodDefinition(node);
             break;
         }
 
         case AstNodeType::FUNCTION_EXPRESSION:{
-            std::cout << "enter FUNCTION_EXPRESSION STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+            XABC_DBG << "enter FUNCTION_EXPRESSION STATEMENT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
             break;
         }
 
         default:
-            std::cout << "--------------------------------------------------------------------" << std::endl;
+            XABC_DBG << "--------------------------------------------------------------------" << std::endl;
             HandleError("#EmitStatement : unsupport statement");
     }
 
@@ -1196,7 +1196,7 @@ void ArkTSGen::SerializeConstant(Property::Constant constant)
             break;
         }
         default: {
-            std::cout << "S1" << std::endl;
+            XABC_DBG << "S1" << std::endl;
             UNREACHABLE();
         }
     }

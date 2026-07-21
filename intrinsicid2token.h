@@ -71,7 +71,7 @@ panda::es2panda::lexer::TokenType BinIntrinsicIdToToken(panda::compiler::Runtime
             return panda::es2panda::lexer::TokenType::PUNCTUATOR_EXCLAMATION_MARK;
 
         default:
-            std::cout << "S6" << std::endl;
+            XABC_DBG << "S6" << std::endl;
             HandleError("#BinIntrinsicIdToToken");
             return panda::es2panda::lexer::TokenType::EOS;
     }
@@ -139,7 +139,7 @@ panda::es2panda::lexer::TokenType BinInverseIntrinsicIdToToken(panda::compiler::
             return panda::es2panda::lexer::TokenType::PUNCTUATOR_STRICT_EQUAL;
   
         default:
-            std::cout << "S7" << std::endl;
+            XABC_DBG << "S7" << std::endl;
             HandleError("#BinInverseIntrinsicIdToToken");
             return panda::es2panda::lexer::TokenType::EOS;
     }
@@ -159,7 +159,7 @@ panda::es2panda::lexer::TokenType UnaryPrefixIntrinsicIdToToken(panda::compiler:
         case panda::compiler::RuntimeInterface::IntrinsicId::DELOBJPROP_V8:
             return panda::es2panda::lexer::TokenType::KEYW_DELETE;
         default:
-            std::cout << "S8: " << GetIntrinsicOpcodeName(id) << std::endl;
+            XABC_DBG << "S8: " << GetIntrinsicOpcodeName(id) << std::endl;
             HandleError("#UnaryPrefixIntrinsicIdToToken");
             return panda::es2panda::lexer::TokenType::EOS;
     }
@@ -174,7 +174,7 @@ panda::es2panda::lexer::TokenType IncDecIntrinsicIdToToken(panda::compiler::Runt
         case panda::compiler::RuntimeInterface::IntrinsicId::INC_IMM8:
             return panda::es2panda::lexer::TokenType::PUNCTUATOR_PLUS;
         default:
-            std::cout << "S9" << std::endl;
+            XABC_DBG << "S9" << std::endl;
             HandleError("#IncDecIntrinsicIdToToken");
             return panda::es2panda::lexer::TokenType::EOS;
     }

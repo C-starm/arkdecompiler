@@ -4,17 +4,17 @@ namespace panda::compiler {
 
 void LogLoopBBs(BasicBlock* header){
     ArenaVector<BasicBlock *> bbs = header->GetLoop()->GetBlocks();
-    std::cout << "[+] loop list >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> " << std::endl;
+    XABC_DBG << "[+] loop list >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> " << std::endl;
     for (size_t i = 0; i < bbs.size(); i++) {
         panda::compiler::BasicBlock * bb = bbs[i];
-        std::cout << bb->GetId() << " ";
+        XABC_DBG << bb->GetId() << " ";
         if(bb->IsLoopValid() && bb->GetLoop()->IsRoot()){
-            std::cout << "bbi@ " << bb->GetId() << std::endl;
+            XABC_DBG << "bbi@ " << bb->GetId() << std::endl;
         }
     } 
 
-    std::cout << std::endl;
-    std::cout << "[-] loop list >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> " << std::endl;
+    XABC_DBG << std::endl;
+    XABC_DBG << "[-] loop list >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> " << std::endl;
 }
 
 bool AnotherBackEdgeAnalysed(BasicBlock* block, std::vector<BasicBlock *>& visited){
@@ -29,8 +29,8 @@ bool AnotherBackEdgeAnalysed(BasicBlock* block, std::vector<BasicBlock *>& visit
 
     for(auto backedge : loop->GetBackEdges()){
         if(block != backedge && contains(visited, backedge)){
-            std::cout << "curblock: " << block->GetId() << std::endl;
-            std::cout << "another backedge: " << backedge->GetId() << std::endl;
+            XABC_DBG << "curblock: " << block->GetId() << std::endl;
+            XABC_DBG << "another backedge: " << backedge->GetId() << std::endl;
             //HandleError("hault");
             return true;
         }
@@ -130,7 +130,7 @@ void JudgeLoopType(BasicBlock* header, std::map<Loop *, uint32_t>& loop2type,
     std::map<Loop *, BasicBlock*> &loop2exit, 
     std::map<BasicBlock*, Loop *> &backedge2dowhileloop){
 
-    std::cout << "[+] judge loop type >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[+] judge loop type >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
     if(header->GetLoop()->IsIrreducible()){
         return; // irreducible loop: skip type-judgment instead of aborting
     }
@@ -138,10 +138,10 @@ void JudgeLoopType(BasicBlock* header, std::map<Loop *, uint32_t>& loop2type,
     auto &back_edges = header->GetLoop()->GetBackEdges();
     int count = 0;
     for (auto back_edge : back_edges) {
-        std::cout << "[*] " << count++ << " : " << back_edge->GetId() <<  std::endl;
+        XABC_DBG << "[*] " << count++ << " : " << back_edge->GetId() <<  std::endl;
         if(AnotherSuccOfEdgeIsExit(header, back_edge) ){
             loop2type[header->GetLoop()] = 1;  // do-whle
-            std::cout << "#JudgeLoopType : dowhile" << std::endl;
+            XABC_DBG << "#JudgeLoopType : dowhile" << std::endl;
             backedge2dowhileloop[back_edge] = header->GetLoop();
 
             if(back_edge->GetTrueSuccessor()->GetLoop() == header->GetLoop()){
@@ -151,7 +151,7 @@ void JudgeLoopType(BasicBlock* header, std::map<Loop *, uint32_t>& loop2type,
             }
         }else{
             loop2type[header->GetLoop()] = 0;  // while
-            std::cout << "#JudgeLoopType : while" << std::endl;
+            XABC_DBG << "#JudgeLoopType : while" << std::endl;
             if(header->GetTrueSuccessor()->GetLoop() == header->GetLoop()){
                 loop2exit[header->GetLoop()] = header->GetFalseSuccessor();
             }else{
@@ -160,7 +160,7 @@ void JudgeLoopType(BasicBlock* header, std::map<Loop *, uint32_t>& loop2type,
         }
     }
 
-    std::cout << "[-] judge loop type >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[-] judge loop type >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
 
     //LogLoopBBs(header);
 }
@@ -182,14 +182,14 @@ bool LoopContainBlock(Loop* loop, BasicBlock *bb){
 
 
 void LogBackEdgeId(ArenaVector<BasicBlock *> backedges){
-    std::cout << "backedgeid: ";
+    XABC_DBG << "backedgeid: ";
     for (auto it = backedges.begin(); it != backedges.end(); ++it) {
-        std::cout << (*it)->GetId();
+        XABC_DBG << (*it)->GetId();
         if (std::next(it) != backedges.end()) {
-            std::cout << ", ";
+            XABC_DBG << ", ";
         }
     }
-    std::cout << std::endl;
+    XABC_DBG << std::endl;
 }
 
 BasicBlock* SearchPreHeader(BasicBlock* header){

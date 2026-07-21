@@ -16,7 +16,7 @@ bool FunDepScan::HasBrokenCfgEdges() {
         if (reachable_ids.count(bb->GetId())) continue;
         for (auto* succ : bb->GetSuccsBlocks()) {
             if (reachable_ids.count(succ->GetId())) {
-                std::cout << "HasBrokenCfgEdges: unreachable block " << bb->GetId()
+                XABC_DBG << "HasBrokenCfgEdges: unreachable block " << bb->GetId()
                           << " has successor " << succ->GetId() << " in reachable set" << std::endl;
                 return true;
             }
@@ -103,12 +103,12 @@ void FunDepScan::VisitEcma(panda::compiler::GraphVisitor *visitor, Inst *inst_ba
             }else{
                 (*enc->class2memberfuns_)[enc->current_constructor_offset].insert(methodoffset);
                 if(method_name.find("instance_initializer") != std::string::npos){
-                    std::cout << "set construct2initializer: " << enc->current_constructor_offset << " : " << methodoffset << std::endl;
+                    XABC_DBG << "set construct2initializer: " << enc->current_constructor_offset << " : " << methodoffset << std::endl;
                     (*enc->construct2initializer_)[enc->current_constructor_offset] = methodoffset;
                     enc->current_instance_initializer = methodoffset;
                     
                 }else if(method_name.find("static_initializer") != std::string::npos){
-                    std::cout << "set construct2staticinitializer: " << enc->current_constructor_offset << " : " << methodoffset << std::endl;
+                    XABC_DBG << "set construct2staticinitializer: " << enc->current_constructor_offset << " : " << methodoffset << std::endl;
                     (*enc->construct2staticinitializer_)[enc->current_constructor_offset] = methodoffset;
                     enc->current_static_initializer = methodoffset;
                 

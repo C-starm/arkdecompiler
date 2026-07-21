@@ -2,6 +2,7 @@
 #define PANDA_USE_FUTEX 1
 #define PANDA_TARGET_UNIX 1
 
+#include <cstdlib>
 #include "astgen.h"
 #include "base.h"
 #include "arkts.h"
@@ -130,7 +131,7 @@ bool DecompileFunction(pandasm::Program *prog, panda::es2panda::parser::Program 
     SetCompilerOptions();
 
     auto func_name = ir_interface->GetMethodIdByOffset(mda.GetMethodId().GetOffset() );
-    std::cout << std::endl << "[+] >>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Decompile "  << func_name << " <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< [+]" << std::endl << std::endl;
+    XABC_DBG << std::endl << "[+] >>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Decompile "  << func_name << " <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< [+]" << std::endl << std::endl;
 
     auto it = prog->function_table.find(func_name);
     if (it == prog->function_table.end()) {
@@ -165,19 +166,19 @@ bool DecompileFunction(pandasm::Program *prog, panda::es2panda::parser::Program 
 
     if ((graph == nullptr) || !graph->RunPass<panda::compiler::IrBuilder>()) {
         LOG(ERROR, BYTECODE_OPTIMIZER) << "Optimizing " << func_name << ": IR builder failed!";
-        std::cout << "Optimizing " << func_name << ": IR builder failed!" << std::endl;
+        XABC_DBG << "Optimizing " << func_name << ": IR builder failed!" << std::endl;
         return false;
     }
 
     if (graph->HasIrreducibleLoop()) {
         LOG(ERROR, BYTECODE_OPTIMIZER) << "Optimizing " << func_name << ": Graph has irreducible loop!";
-        std::cout << "Optimizing " << func_name << ": Graph has irreducible loop!" << std::endl;
+        XABC_DBG << "Optimizing " << func_name << ": Graph has irreducible loop!" << std::endl;
         return false;
     }
 
     if (!DecompileRunOptimizations(graph, ir_interface)) {
         LOG(ERROR, BYTECODE_OPTIMIZER) << "Optimizing " << func_name << ": Running optimizations failed!";
-        std::cout << "Optimizing " << func_name << ": Running optimizations failed!" << std::endl;
+        XABC_DBG << "Optimizing " << func_name << ": Running optimizations failed!" << std::endl;
         return false;
     }
     
@@ -194,21 +195,21 @@ bool DecompileFunction(pandasm::Program *prog, panda::es2panda::parser::Program 
 
         LOG(ERROR, BYTECODE_OPTIMIZER) << "Optimizing " << func_name << ": Code generation failed!";
 
-        std::cout << "Decompiling " << func_name << ": Code generation failed!" << std::endl;
+        XABC_DBG << "Decompiling " << func_name << ": Code generation failed!" << std::endl;
 
         return false;
     }
 
-    std::cout << std::endl << "[-] >>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Decompile "  << func_name << " <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< [-]" << std::endl << std::endl;
+    XABC_DBG << std::endl << "[-] >>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Decompile "  << func_name << " <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< [-]" << std::endl << std::endl;
 
     return true;
 }
 
 void LogAst(panda::es2panda::parser::Program *parser_program, std::string outputFileName){
-    std::cout << "[+] log raw ast start >>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[+] log raw ast start >>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
     std::string res = parser_program->Dump();
-    std::cout << res << std::endl;
-    std::cout << "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++" << std::endl;
+    XABC_DBG << res << std::endl;
+    XABC_DBG << "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++" << std::endl;
     std::ofstream outputFile(outputFileName);
     if (!outputFile.is_open()) {
         std::cerr << "can't open output file: " << outputFileName << std::endl;
@@ -216,15 +217,15 @@ void LogAst(panda::es2panda::parser::Program *parser_program, std::string output
         outputFile << res;
         outputFile.close();
     }
-    std::cout << "[-] log raw ast end >>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[-] log raw ast end >>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
 }
 
 void LogArkTS2File(panda::es2panda::parser::Program *parser_program, std::string outputFileName){
-    std::cout << "[+] log arkTS  start >>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[+] log arkTS  start >>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
     auto astsgen = panda::es2panda::ir::ArkTSGen(parser_program->Ast());
     
-    std::cout << astsgen.Str() << std::endl;
-    std::cout << "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++" << std::endl;
+    XABC_DBG << astsgen.Str() << std::endl;
+    XABC_DBG << "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++" << std::endl;
     std::ofstream outputFile(outputFileName);
     if (!outputFile.is_open()) {
         std::cerr << "can't open output file: " << outputFileName << std::endl;
@@ -232,7 +233,7 @@ void LogArkTS2File(panda::es2panda::parser::Program *parser_program, std::string
         outputFile << astsgen.Str();
         outputFile.close();
     }
-    std::cout << "[-] log arkTS  end >>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[-] log arkTS  end >>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
 }
 
 int32_t ScanFunDep(pandasm::Program *prog, panda::disasm::Disassembler& disasm,
@@ -257,7 +258,7 @@ int32_t ScanFunDep(pandasm::Program *prog, panda::disasm::Disassembler& disasm,
     SetCompilerOptions();
 
     auto func_name = ir_interface->GetMethodIdByOffset(mda.GetMethodId().GetOffset() );
-    std::cout << ">>>>>>>>>>>>>>>>>>>>>>>>>>>> "  << func_name << " <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<" << std::endl;
+    XABC_DBG << ">>>>>>>>>>>>>>>>>>>>>>>>>>>> "  << func_name << " <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<" << std::endl;
     auto it = prog->function_table.find(func_name);
     if (it == prog->function_table.end()) {   
         LOG(ERROR, BYTECODE_OPTIMIZER) << "Cannot find function: " << func_name;
@@ -281,19 +282,19 @@ int32_t ScanFunDep(pandasm::Program *prog, panda::disasm::Disassembler& disasm,
     
     if ((graph == nullptr) || !graph->RunPass<panda::compiler::IrBuilder>()) {
         //LOG(ERROR, BYTECODE_OPTIMIZER) << "Optimizing " << func_name << ": IR builder failed!";
-        std::cout << "Optimizing " << func_name << ": IR builder failed!" << std::endl;
+        XABC_DBG << "Optimizing " << func_name << ": IR builder failed!" << std::endl;
         return 3;
     }
 
     if (graph->HasIrreducibleLoop()) {
         LOG(ERROR, BYTECODE_OPTIMIZER) << "Optimizing " << func_name << ": Graph has irreducible loop!";
-        std::cout << "Optimizing " << func_name << ": Graph has irreducible loop!" << std::endl;
+        XABC_DBG << "Optimizing " << func_name << ": Graph has irreducible loop!" << std::endl;
         return 4;
     }
 
     if (!DecompileRunOptimizations(graph, ir_interface)) {
         LOG(ERROR, BYTECODE_OPTIMIZER) << "Optimizing " << func_name << ": Running optimizations failed!";
-        std::cout << "Optimizing " << func_name << ": Running optimizations failed!" << std::endl;
+        XABC_DBG << "Optimizing " << func_name << ": Running optimizations failed!" << std::endl;
         return 5;
     }
     
@@ -302,7 +303,7 @@ int32_t ScanFunDep(pandasm::Program *prog, panda::disasm::Disassembler& disasm,
         construct2initializer, construct2staticinitializer, construct2definedmethod
     )) {
         LOG(ERROR, BYTECODE_OPTIMIZER) << "Optimizing " << func_name << ": FuncDep scanning failed!";
-        std::cout << "FuncDep Scanning " << func_name << ": failed!" << std::endl;
+        XABC_DBG << "FuncDep Scanning " << func_name << ": failed!" << std::endl;
         
         return 6;
     }
@@ -312,9 +313,9 @@ int32_t ScanFunDep(pandasm::Program *prog, panda::disasm::Disassembler& disasm,
 
 void ConstructMethodname2offset(panda::disasm::Disassembler& disasm, std::map<std::string, uint32_t> *methodname2offset, std::map<uint32_t, std::string>* offset2methodname){
     for (const auto& pair : disasm.method_name_to_id_) {
-        std::cout << "##########################################################" << std::endl;
-        std::cout << "first: " << pair.first << std::endl;
-        std::cout << "second: " << pair.second << std::endl;
+        XABC_DBG << "##########################################################" << std::endl;
+        XABC_DBG << "first: " << pair.first << std::endl;
+        XABC_DBG << "second: " << pair.second << std::endl;
         
         std::size_t pos = pair.first.find(':');
         if (pos != std::string::npos) {
@@ -396,7 +397,7 @@ void UpdateMemberDepConstructor(std::vector<uint32_t> *inserted_construct_order,
 
     uint32_t last_class_member = 0; // multiple class analysis sequence
     for(const auto& constructor_offset : *inserted_construct_order){
-        std::cout << "constructor_offset #: " << constructor_offset << std::endl; 
+        XABC_DBG << "constructor_offset #: " << constructor_offset << std::endl; 
         if(class2memberfuns->find(constructor_offset) == class2memberfuns->end()){
             continue;
         }
@@ -476,6 +477,13 @@ bool DecompilePandaFile(pandasm::Program *prog, BytecodeOptIrInterface *ir_inter
         LOG(FATAL, BYTECODE_OPTIMIZER) << "Can not open binary file: " << pfile_name;
     }
 
+    // Record-name filter for chunked decompilation of huge real HAPs where a
+    // pathological function (or bundled 3rd-party ohpm package) makes a
+    // whole-abc decompile hang. If XABC_RECORD_FILTER is set, only functions
+    // whose full name CONTAINS that substring are decompiled; others are
+    // skipped. Empty/unset => decompile everything (original behaviour).
+    const char *record_filter_env = std::getenv("XABC_RECORD_FILTER");
+    std::string record_filter = record_filter_env ? record_filter_env : "";
 
     bool result = true;
     panda::es2panda::parser::Program *parser_program = new panda::es2panda::parser::Program(panda::es2panda::ScriptExtension::TS);
@@ -534,7 +542,7 @@ bool DecompilePandaFile(pandasm::Program *prog, BytecodeOptIrInterface *ir_inter
         }
 
         panda_file::ClassDataAccessor cda {*pfile, record_id};
-        std::cout << "classname: " << std::left << std::setw(40) <<   cda.GetName().data  << " , fileds: " << cda.GetFieldsNumber() << " , method: " << cda.GetMethodsNumber() << " interface: " << cda.GetIfacesNumber() << " superclass: " <<  cda.GetSuperClassId()   << std::endl;
+        XABC_DBG << "classname: " << std::left << std::setw(40) <<   cda.GetName().data  << " , fileds: " << cda.GetFieldsNumber() << " , method: " << cda.GetMethodsNumber() << " interface: " << cda.GetIfacesNumber() << " superclass: " <<  cda.GetSuperClassId()   << std::endl;
     }
     
     std::vector<std::pair<uint32_t, uint32_t>> depedges;
@@ -547,6 +555,17 @@ bool DecompilePandaFile(pandasm::Program *prog, BytecodeOptIrInterface *ir_inter
         }
 
         panda_file::ClassDataAccessor cda {*pfile, record_id};
+
+        // Chunked decompile: skip the whole record's dependency scan when it does
+        // not match XABC_RECORD_FILTER. ScanFunDep over the full abc (tens of
+        // thousands of functions) is the real bottleneck on huge HAPs; filtering
+        // here is what actually makes per-record decompile finish.
+        if(!record_filter.empty()){
+            std::string rec_name(reinterpret_cast<const char*>(cda.GetName().data));
+            if(rec_name.find(record_filter) == std::string::npos){
+                continue;
+            }
+        }
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         cda.EnumerateMethods([prog, &disasm, ir_interface, is_dynamic, &depedges, &class2memberfuns, &method2lexicalmap, &memberfuncs, &raw2newname, &methodname2offset, &skipfailfuns, &inserted_construct_order, &construct2initializer, &construct2staticinitializer, &construct2definedmethod](panda_file::MethodDataAccessor &mda){
             if (!mda.IsExternal()) {
@@ -572,12 +591,12 @@ bool DecompilePandaFile(pandasm::Program *prog, BytecodeOptIrInterface *ir_inter
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     auto sorted_methodoffsets = TopologicalSort(depedges);
 
-    std::cout << "@@@ topological order start @@@" << std::endl;
+    XABC_DBG << "@@@ topological order start @@@" << std::endl;
     for(auto methodoffset : sorted_methodoffsets){
         auto res = FindKeyByValue(methodname2offset, methodoffset);
-        std::cout << "offset: " << methodoffset << " , name: " << *res << std::endl;
+        XABC_DBG << "offset: " << methodoffset << " , name: " << *res << std::endl;
     }
-    std::cout << "@@@ topological order end @@@" << std::endl;
+    XABC_DBG << "@@@ topological order end @@@" << std::endl;
 
     std::map<uint32_t, std::string*> patchvarspace;
 
@@ -589,8 +608,15 @@ bool DecompilePandaFile(pandasm::Program *prog, BytecodeOptIrInterface *ir_inter
             continue;
         }
 
+        if(!record_filter.empty()){
+            auto fname = FindKeyByValue(methodname2offset, methodoffset);
+            if(!fname || fname->find(record_filter) == std::string::npos){
+                continue;
+            }
+        }
+
         result = DecompileFunction(prog, parser_program, ir_interface, mda, is_dynamic, &method2lexicalenvstack, &method2sendablelexicalenvstack, &patchvarspace, index2importnamespaces, localnamespaces, importnamespaces, recordimportnamespaces, &class2memberfuns, &method2scriptfunast, &ctor2classdeclast, &memberfuncs, &class2father, &method2lexicalmap, &globallexical_waitlist, &globalsendablelexical_waitlist, &raw2newname, &methodname2offset);
-        
+
         if(!result){
             // One function failed to decompile — skip it and keep going so the
             // rest of the app still produces output (don't abort the whole file).
@@ -605,14 +631,21 @@ bool DecompilePandaFile(pandasm::Program *prog, BytecodeOptIrInterface *ir_inter
         }
         panda_file::ClassDataAccessor cda {*pfile, record_id};
 
-        cda.EnumerateMethods([prog, parser_program, ir_interface, is_dynamic, &result, &method2lexicalenvstack, &method2sendablelexicalenvstack, &patchvarspace, &index2importnamespaces, &localnamespaces, &importnamespaces, &recordimportnamespaces, &class2memberfuns, &method2scriptfunast, &ctor2classdeclast, &memberfuncs, &class2father, &method2lexicalmap, &globallexical_waitlist, &globalsendablelexical_waitlist, &raw2newname, &methodname2offset, sorted_methodoffsets, &skipfailfuns](panda_file::MethodDataAccessor &mda){           
+        cda.EnumerateMethods([prog, parser_program, ir_interface, is_dynamic, &result, &method2lexicalenvstack, &method2sendablelexicalenvstack, &patchvarspace, &index2importnamespaces, &localnamespaces, &importnamespaces, &recordimportnamespaces, &class2memberfuns, &method2scriptfunast, &ctor2classdeclast, &memberfuncs, &class2father, &method2lexicalmap, &globallexical_waitlist, &globalsendablelexical_waitlist, &raw2newname, &methodname2offset, sorted_methodoffsets, &skipfailfuns, &record_filter](panda_file::MethodDataAccessor &mda){
             if (!mda.IsExternal() && std::find(sorted_methodoffsets.begin(), sorted_methodoffsets.end(), mda.GetMethodId().GetOffset()) == sorted_methodoffsets.end() ){
                             uint32_t cur_method = mda.GetMethodId().GetOffset();
                 if(skipfailfuns.find(cur_method) != skipfailfuns.end()){
-                    
+
                     return;
                 }
-                
+
+                if(!record_filter.empty()){
+                    auto fname = FindKeyByValue(methodname2offset, cur_method);
+                    if(!fname || fname->find(record_filter) == std::string::npos){
+                        return;
+                    }
+                }
+
                 result = DecompileFunction(prog, parser_program, ir_interface, mda, is_dynamic, &method2lexicalenvstack, &method2sendablelexicalenvstack, &patchvarspace, index2importnamespaces, localnamespaces, importnamespaces, recordimportnamespaces, &class2memberfuns, &method2scriptfunast, &ctor2classdeclast, &memberfuncs, &class2father, &method2lexicalmap, &globallexical_waitlist, &globalsendablelexical_waitlist, &raw2newname, &methodname2offset);
                 if(!result){
                     // skip the failed function, keep decompiling the rest
@@ -623,33 +656,33 @@ bool DecompilePandaFile(pandasm::Program *prog, BytecodeOptIrInterface *ir_inter
     }
    
 
-    std::cout <<  "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" << std::endl;
+    XABC_DBG <<  "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" << std::endl;
 
     ConstructClasses(class2memberfuns, parser_program, ir_interface, class2father, method2scriptfunast, ctor2classdeclast, raw2newname);
 
-    std::cout <<  "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD" << std::endl;
+    XABC_DBG <<  "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD" << std::endl;
 
     for (auto it = method2scriptfunast.begin(); it != method2scriptfunast.end(); ++it) {
         auto funcDecl = AllocNode<panda::es2panda::ir::FunctionDeclaration>(parser_program, it->second);
 
         program_ast->AddStatementAtPos(program_ast->Statements().size(), funcDecl);
-        std::cout << "size:::: "<< program_statements.size() << std::endl;
+        XABC_DBG << "size:::: "<< program_statements.size() << std::endl;
 
-        //std::cout << it->first << " MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM" << std::endl;
+        //XABC_DBG << it->first << " MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM" << std::endl;
         //LogAst(parser_program, outputAstFileName);
     }
 
     for (auto it = ctor2classdeclast.begin(); it != ctor2classdeclast.end(); ++it) {
         program_ast->AddStatementAtPos(program_ast->Statements().size(), it->second);
         
-        //std::cout << it->first << " MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM" << std::endl;
+        //XABC_DBG << it->first << " MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM" << std::endl;
         //LogAst(parser_program, outputAstFileName);
     }
 
     //LogAst(parser_program, outputAstFileName);
     LogArkTS2File(parser_program, outputFileName);
 
-    std::cout << "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE" << std::endl;
+    XABC_DBG << "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE" << std::endl;
 
     return result;
 }
@@ -696,14 +729,21 @@ bool DecompileBytecode(const std::string &pandafile_name, panda::disasm::Disasse
 
 
 int main(int argc, char* argv[]) {
-    
+
+    // Read XABC_DEBUG once up front so all debug output is gated (default OFF).
+    // Without this, xabc floods stdout with per-function / per-IR-instruction
+    // debug — pathological on large real HAPs (an 11 MB abc produced ~1e9 lines /
+    // tens of GB and looked like a hang). Set XABC_DEBUG=1 to restore the old
+    // verbose tracing.
+    XabcInitDebugFromEnv();
+
     if (argc > 1) {
-        inputFileName = argv[1]; 
+        inputFileName = argv[1];
     }
     if (argc > 2) {
-        outputFileName = argv[2]; 
+        outputFileName = argv[2];
     }
-    
+
     panda::disasm::Disassembler disasm {};
     disasm.Disassemble(inputFileName, true, false);
     disasm.CollectInfo();

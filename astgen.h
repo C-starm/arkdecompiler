@@ -48,20 +48,20 @@ public:
         ArenaVector<es2panda::ir::Expression*> arguments(parser_program->Allocator()->Adapter());
 
         if(this->method2lexicalenvstack_->find(methodoffset) != this->method2lexicalenvstack_->end()){
-            //std::cout << "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX found lexicalenvstack " << std::endl;
+            //XABC_DBG << "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX found lexicalenvstack " << std::endl;
             //auto x = (*this->method2lexicalenvstack_)[methodoffset];
-            //std::cout << "lexicalenvstack size: " << x->Size() << std::endl;
+            //XABC_DBG << "lexicalenvstack size: " << x->Size() << std::endl;
         }else{
-            //std::cout << "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX not found lexicalenvstack " << std::endl;
+            //XABC_DBG << "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX not found lexicalenvstack " << std::endl;
             (*this->method2lexicalenvstack_)[methodoffset] = new LexicalEnvStack();
         }
 
         if(this->method2sendablelexicalenvstack_->find(methodoffset) != this->method2sendablelexicalenvstack_->end()){
-            std::cout << "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX found lexicalenvstack " << std::endl;
+            XABC_DBG << "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX found lexicalenvstack " << std::endl;
             auto x = (*this->method2sendablelexicalenvstack_)[methodoffset];
-            std::cout << "sendablelexicalenvstack size: " << x->Size() << std::endl;
+            XABC_DBG << "sendablelexicalenvstack size: " << x->Size() << std::endl;
         }else{
-            //std::cout << "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX not found lexicalenvstack " << std::endl;
+            //XABC_DBG << "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX not found lexicalenvstack " << std::endl;
             (*this->method2sendablelexicalenvstack_)[methodoffset] = new LexicalEnvStack();
         }
 
@@ -148,7 +148,7 @@ public:
     {
         auto ret = astgen->parser_program_->Allocator()->New<T>(std::forward<Args>(args)...);
         if (ret == nullptr) {
-            std::cout << "Unsuccessful allocation during parsing" << std::endl;;
+            XABC_DBG << "Unsuccessful allocation during parsing" << std::endl;;
         }
         return ret;
     }
@@ -194,15 +194,15 @@ public:
             new_block_statement->AddStatementAtPos(insertpos , rawstatement);
             insertpos++;
         }
-        std::cout <<  "#CopyAndCreateNewBlockStatement: " << new_block_statement->Statements().size() << std::endl;;
+        XABC_DBG <<  "#CopyAndCreateNewBlockStatement: " << new_block_statement->Statements().size() << std::endl;;
 
         return new_block_statement;
     }
 
     void LocateAndRmoveStatement(const std::vector<BasicBlock*>& visited, panda::es2panda::ir::Statement *blockstatement, panda::es2panda::ir::Statement *statement){
-        std::cout << "#LocateAndRmoveStatement search:  >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+        XABC_DBG << "#LocateAndRmoveStatement search:  >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
         auto& statements = blockstatement->AsBlockStatement()->statements_;
-        std::cout << "@@@@@@ pre blocksize: " <<  statements.size() << std::endl;
+        XABC_DBG << "@@@@@@ pre blocksize: " <<  statements.size() << std::endl;
     
         auto it = statements.begin();
         while (it != statements.end()) {
@@ -227,7 +227,7 @@ public:
             HandleError("#LocateAndReplaceAST: locate block failed2");
         }
 
-        std::cout << "#LocateAndReplaceAST search >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+        XABC_DBG << "#LocateAndReplaceAST search >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
         for (BasicBlock* pre : preds) {
             if (pre == nullptr || pre == block || !contains(visited, pre)) {
                 continue;
@@ -353,7 +353,7 @@ public:
     // uint32_t DetectDepthOfAST(es2panda::ir::Expression* expression){
     //     uint32_t astdepth = 0;
     //     expression->Iterate([&astdepth](const es2panda::ir::AstNode *astNode) -> void {
-    //         std::cout << "astdepth: " << astdepth++ << std::endl;
+    //         XABC_DBG << "astdepth: " << astdepth++ << std::endl;
     //     });
 
     //     return astdepth;
@@ -369,7 +369,7 @@ public:
             [&](const es2panda::ir::AstNode* node) {
             if (node == nullptr) return;
 
-            std::cout << "astcomplex: " << astcomplex++ << std::endl;
+            XABC_DBG << "astcomplex: " << astcomplex++ << std::endl;
             switch (node->Type()) {
                 case es2panda::ir::AstNodeType::BINARY_EXPRESSION: {
                     auto binaryExpr = node->AsBinaryExpression();
@@ -492,7 +492,7 @@ public:
         
         auto it = this->id2expression.find(id);
         if (it != this->id2expression.end()) {
-            std::cout << "#GetExpressionByRegister: " << std::to_string(id) << std::endl;
+            XABC_DBG << "#GetExpressionByRegister: " << std::to_string(id) << std::endl;
             return it->second;  
         }
         
@@ -518,7 +518,7 @@ public:
     std::optional<panda::es2panda::ir::Expression*> GetExpressionByRegister(Inst* inst, compiler::Register key){
         auto it = this->reg2expression.find(key);
         if (it != this->reg2expression.end()) {
-            std::cout << "#GetExpressionByRegister: " << std::to_string(key) << std::endl;
+            XABC_DBG << "#GetExpressionByRegister: " << std::to_string(key) << std::endl;
             return it->second;  
         }
 
@@ -534,17 +534,17 @@ public:
         }
         this->SetExpressionById(inst->GetId(), value);
 
-        std::cout << "#SetExpressionByRegister: " << std::to_string(key) << std::endl;
+        XABC_DBG << "#SetExpressionByRegister: " << std::to_string(key) << std::endl;
         
         this->reg2expression[key] = value;
     }
 
     void Logid2BlockKeys(){
-        std::cout << "id2block keys: ";
+        XABC_DBG << "id2block keys: ";
         for (const auto& pair : this->id2block) {
-            std::cout << pair.first << ", ";
+            XABC_DBG << pair.first << ", ";
         }
-        std::cout << std::endl;
+        XABC_DBG << std::endl;
     }
 
     void LogCurLexicalIndexes(Inst* inst){
@@ -555,14 +555,14 @@ public:
     }
 
     void LogSpecialBlockId(){
-        std::cout << "specialblockid: ";
+        XABC_DBG << "specialblockid: ";
         for (auto it = this->specialblockid.begin(); it != this->specialblockid.end(); ++it) {
-            std::cout << *it;
+            XABC_DBG << *it;
             if (std::next(it) != this->specialblockid.end()) {
-                std::cout << ", ";
+                XABC_DBG << ", ";
             }
         }
-        std::cout << std::endl;
+        XABC_DBG << std::endl;
     }
  
     void AddInstAst2BlockStatemntByInst(Inst *inst, es2panda::ir::Statement *statement){
@@ -608,7 +608,7 @@ public:
             // METHODAFFILIATE = 0x0a  
             // ASYNCMETHOD = 0x18
             // LITERALARRAY = 0x19
-            std::cout << "value tag: " << static_cast<int>(literal.tag_) << std::endl;
+            XABC_DBG << "value tag: " << static_cast<int>(literal.tag_) << std::endl;
             HandleError("unsupport literal type error");
         }
         return tmp;
@@ -1387,7 +1387,7 @@ public:
             }else if(callee->IsIdentifier()){
                 return GetNameFromExpression(callee);
             }else{
-                std::cout << "###: " << std::to_string(static_cast<int>(callee->Type())) << std::endl;
+                XABC_DBG << "###: " << std::to_string(static_cast<int>(callee->Type())) << std::endl;
                 // Unknown callee shape: return a placeholder name rather than
                 // aborting the whole decompile or returning nullopt (which some
                 // callers deref). Callers comparing against real names won't match.
@@ -1477,7 +1477,7 @@ public:
             ss_ << "}";
             return ss_.str();
         }else{
-            std::cout << "###1: " << std::to_string(static_cast<int>(rawexpression->Type())) << std::endl;
+            XABC_DBG << "###1: " << std::to_string(static_cast<int>(rawexpression->Type())) << std::endl;
             // Unknown expression shape: placeholder rather than abort/nullopt.
             return std::string("__expr__");
         }
@@ -1486,7 +1486,7 @@ public:
 
     es2panda::ir::BlockStatement* GetBlockStatementById(BasicBlock *block){
         auto block_id = block->GetId();
-        std::cout << "[*] GetBlockStatementById bbid: " << block_id << ", ";
+        XABC_DBG << "[*] GetBlockStatementById bbid: " << block_id << ", ";
 
 
         if(!father_visited(block)){
@@ -1495,13 +1495,13 @@ public:
 
         // case1: found blockstatment
         if (this->id2block.find(block_id) != this->id2block.end()) {
-            std::cout << "@@ case 1" << std::endl;
+            XABC_DBG << "@@ case 1" << std::endl;
             return this->id2block[block_id];
         }
         
         // case2: found loop
         if(block->IsLoopValid() && block->IsLoopHeader() ){
-            std::cout << "@@ case 2" << std::endl;
+            XABC_DBG << "@@ case 2" << std::endl;
             JudgeLoopType(block, this->loop2type, this->loop2exit, this->backedge2dowhileloop);
 
             //////////////////////////////////////////////////////////////////////////////////////
@@ -1516,7 +1516,7 @@ public:
 
         // case3: found unique predecessor with unique successor
         if(block->GetPredsBlocks().size() == 1 && !block->IsStartBlock() && block->GetPredecessor(0)->GetSuccsBlocks().size() == 1){
-            std::cout << "@@ case 3" << std::endl;
+            XABC_DBG << "@@ case 3" << std::endl;
             BasicBlock* ancestor_block = block->GetPredecessor(0);
 
             if(this->id2block.find(ancestor_block->GetId()) != this->id2block.end()){
@@ -1543,7 +1543,7 @@ public:
         }
 
         // case5:create new statements
-        std::cout << "@@ case 5" << std::endl;
+        XABC_DBG << "@@ case 5" << std::endl;
         ArenaVector<panda::es2panda::ir::Statement *> statements(this->parser_program_->Allocator()->Adapter());
         auto new_block_statement = AllocNode<es2panda::ir::BlockStatement>(this, nullptr, std::move(statements));
 
@@ -1560,7 +1560,7 @@ public:
             if(ancestor_block == nullptr){
                 HandleError("GetBlockStatementById# find ancestor is nullptr");
             }
-            std::cout << "@ ancestor_block: " <<  std::to_string(ancestor_block->GetId()) <<  std::endl;
+            XABC_DBG << "@ ancestor_block: " <<  std::to_string(ancestor_block->GetId()) <<  std::endl;
 
             auto ancestor_block_statements = this->GetBlockStatementById(ancestor_block);
             this->id2block[block_id] =  ancestor_block_statements;

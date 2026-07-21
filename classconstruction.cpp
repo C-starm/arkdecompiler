@@ -52,9 +52,9 @@ bool ConstructClasses(std::map<uint32_t, std::set<uint32_t>> &class2memberfuns, 
     for(const auto & pair : class2memberfuns){
         auto constructor_offset = pair.first;
 
-        std::cout << constructor_offset << std::endl;
+        XABC_DBG << constructor_offset << std::endl;
         auto member_funcs = pair.second;
-        //std::cout << "constructor_offset: " << constructor_offset << std::endl;
+        //XABC_DBG << "constructor_offset: " << constructor_offset << std::endl;
         //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         auto methodid = ir_interface->GetMethodIdByOffset(constructor_offset);
         auto constructor_offset_name = RemoveArgumentsOfFunc(methodid);
@@ -90,7 +90,7 @@ bool ConstructClasses(std::map<uint32_t, std::set<uint32_t>> &class2memberfuns, 
         if(func == nullptr){
             // The class constructor itself was skipped/unanalysable — we can't
             // build a class without it, so skip the whole class rather than abort.
-            std::cout << "skip class with no constructor AST, offset: " << constructor_offset << std::endl;
+            XABC_DBG << "skip class with no constructor AST, offset: " << constructor_offset << std::endl;
             continue;
         }
 

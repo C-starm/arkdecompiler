@@ -9,8 +9,8 @@ using panda_file::LiteralTag;
 
 void AstGen::VisitTryBegin(const compiler::BasicBlock *bb)
 {
-    std::cout << "[+] VisitTryBegin  >>>>>>>>>>>>>>>>>" << std::endl;
-    std::cout << "[-] VisitTryBegin  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[+] VisitTryBegin  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[-] VisitTryBegin  >>>>>>>>>>>>>>>>>" << std::endl;
 }
 
 
@@ -36,14 +36,14 @@ bool AstGen::RunImpl()
 {
     
     for (auto *bb : GetGraph()->GetBlocksRPO()) {
-        std::cout << "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ visit bbid: " << bb->GetId() << std::endl;
+        XABC_DBG << "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ visit bbid: " << bb->GetId() << std::endl;
         //if(bb->IsLoopValid() && !bb->GetLoop()->IsRoot() ){
         if(bb->IsLoopValid()  ){
             auto loop = bb->GetLoop();
             auto backedges = loop->GetBackEdges();
             auto innerloop = loop->GetInnerLoops();
             auto blocks = loop->GetBlocks();
-            std::cout << "Loop Size: " << backedges.size()  << " , innerloop: " << innerloop.size()  << " , block: " << blocks.size() << std::endl;
+            XABC_DBG << "Loop Size: " << backedges.size()  << " , innerloop: " << innerloop.size()  << " , block: " << blocks.size() << std::endl;
 
         }
 
@@ -64,14 +64,14 @@ bool AstGen::RunImpl()
 
         if(bb != this->GetGraph()->GetStartBlock()) {
             if(nearestpre != nullptr && this->bb2lexicalenvstack_[nearestpre] != nullptr){
-                std::cout << "!!!!!!!!!!!!!!!!!!!! found pre id for bb2lexicalenvstack_: " << nearestpre->GetId() << std::endl;
+                XABC_DBG << "!!!!!!!!!!!!!!!!!!!! found pre id for bb2lexicalenvstack_: " << nearestpre->GetId() << std::endl;
                 this->bb2lexicalenvstack_[bb] = new LexicalEnvStack(*this->bb2lexicalenvstack_[nearestpre]);
                 this->bb2sendablelexicalenvstack_[bb] = new LexicalEnvStack(*this->bb2sendablelexicalenvstack_[nearestpre]);
 
-                std::cout << "size: " << (*this->bb2lexicalenvstack_[nearestpre]).Size()  << std::endl;
-                std::cout << "sendable size: " << (*this->bb2sendablelexicalenvstack_[nearestpre]).Size()  << std::endl;
+                XABC_DBG << "size: " << (*this->bb2lexicalenvstack_[nearestpre]).Size()  << std::endl;
+                XABC_DBG << "sendable size: " << (*this->bb2sendablelexicalenvstack_[nearestpre]).Size()  << std::endl;
             }else{
-                std::cout << "!!!!!!!!!!!!!!!!!!!! not found pre id for bb2lexicalenvstack_: "<< "curid: " << bb->GetId()  << std::endl;
+                XABC_DBG << "!!!!!!!!!!!!!!!!!!!! not found pre id for bb2lexicalenvstack_: "<< "curid: " << bb->GetId()  << std::endl;
                 this->bb2lexicalenvstack_[bb] = new LexicalEnvStack();
                 this->bb2sendablelexicalenvstack_[bb] = new LexicalEnvStack();
             }
@@ -94,7 +94,7 @@ bool AstGen::RunImpl()
             if(father->IsLoopValid() && !father->GetLoop()->IsRoot()){
                 if(bb->GetLoop() != father->GetLoop()  ){
                     if(bb->GetSuccsBlocks().size() == 1){
-                        //std::cout << "truesucc: " << bb->GetTrueSuccessor()->GetId() << ", falsesucc: " <<  loop2exit[father->GetLoop()]->GetId() << std::endl;
+                        //XABC_DBG << "truesucc: " << bb->GetTrueSuccessor()->GetId() << ", falsesucc: " <<  loop2exit[father->GetLoop()]->GetId() << std::endl;
                         if(bb->GetTrueSuccessor() == loop2exit[father->GetLoop()]){
                             this->GetBlockStatementById(bb);
                             auto breakstatement = AllocNode<es2panda::ir::BreakStatement>(this);
@@ -180,7 +180,7 @@ bool AstGen::RunImpl()
 
 void AstGen::VisitSpillFill(GraphVisitor *visitor, Inst *inst_base)
 {
-    std::cout << "[+] VisitSpillFill  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[+] VisitSpillFill  >>>>>>>>>>>>>>>>>" << std::endl;
     auto *enc = static_cast<AstGen *>(visitor);
     auto inst = inst_base->CastToSpillFill();
 
@@ -190,18 +190,18 @@ void AstGen::VisitSpillFill(GraphVisitor *visitor, Inst *inst_base)
         }
         auto it = enc->reg2expression.find(sf.SrcValue());
         if (it == enc->reg2expression.end()) {
-            std::cout << "VisitSpillFill # SpillFill none register"  << std::endl; 
+            XABC_DBG << "VisitSpillFill # SpillFill none register"  << std::endl; 
         }else{
             enc->SetExpressionByRegister(inst, sf.DstValue(), *enc->GetExpressionByRegister(inst, sf.SrcValue()));
         }
     }
-    std::cout << "[-] VisitSpillFill  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[-] VisitSpillFill  >>>>>>>>>>>>>>>>>" << std::endl;
 }
 
 
 void AstGen::VisitConstant(GraphVisitor *visitor, Inst *inst_base)
 {
-    std::cout << "[+] VisitConstant  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[+] VisitConstant  >>>>>>>>>>>>>>>>>" << std::endl;
     auto *enc = static_cast<AstGen *>(visitor);
     auto inst = inst_base->CastToConstant();
     auto type = inst->GetType();
@@ -226,7 +226,7 @@ void AstGen::VisitConstant(GraphVisitor *visitor, Inst *inst_base)
                                                         );
             break;
         default:
-            std::cout << "S3" << std::endl;
+            XABC_DBG << "S3" << std::endl;
             UNREACHABLE();
             LOG(ERROR, BYTECODE_OPTIMIZER) << "VisitConstant with unknown type" << type;
             enc->success_ = false;
@@ -234,13 +234,13 @@ void AstGen::VisitConstant(GraphVisitor *visitor, Inst *inst_base)
 
     enc->SetExpressionByRegister(inst, inst->GetDstReg(), number);
     
-    std::cout << "[-] VisitConstant  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[-] VisitConstant  >>>>>>>>>>>>>>>>>" << std::endl;
 }
 
 
 void AstGen::VisitIf(GraphVisitor *v, Inst *inst_base)
 {
-    std::cout << "[+] VisitIf  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[+] VisitIf  >>>>>>>>>>>>>>>>>" << std::endl;
     auto enc = static_cast<AstGen *>(v);
     auto inst = inst_base->CastToIf();
 
@@ -263,7 +263,7 @@ void AstGen::VisitIf(GraphVisitor *v, Inst *inst_base)
                                                         BinIntrinsicIdToToken(compiler::RuntimeInterface::IntrinsicId::NOTEQ_IMM8_V8));
             break;
         default:
-            std::cout << "S5" << std::endl;
+            XABC_DBG << "S5" << std::endl;
             UNREACHABLE();
     }
     /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -273,13 +273,13 @@ void AstGen::VisitIf(GraphVisitor *v, Inst *inst_base)
     auto block_statement = enc->GetBlockStatementById(block);
 
     if(block->IsLoopValid() && block->IsLoopHeader()){
-        std::cout << "1%%%%%%%%%%%%%%%%%!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
+        XABC_DBG << "1%%%%%%%%%%%%%%%%%!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
         if(enc->loop2type[block->GetLoop()] == 1){
-            std::cout << "[+] do-while ===" << std::endl;
+            XABC_DBG << "[+] do-while ===" << std::endl;
 
-            std::cout << "[-] do-while ===" << std::endl;
+            XABC_DBG << "[-] do-while ===" << std::endl;
         }else{
-            std::cout << "[+] while ===" << std::endl;
+            XABC_DBG << "[+] while ===" << std::endl;
 
             auto true_statements =   enc->GetBlockStatementById(inst->GetBasicBlock()->GetTrueSuccessor());
             auto false_statements =  enc->GetBlockStatementById(inst->GetBasicBlock()->GetFalseSuccessor());
@@ -296,10 +296,10 @@ void AstGen::VisitIf(GraphVisitor *v, Inst *inst_base)
             enc->AddInstAst2BlockStatemntByInst(inst, whilestatement);
             enc->AddInstAst2BlockStatemntByInst(inst, false_statements);
 
-            std::cout << "[-] while ===" << std::endl;
+            XABC_DBG << "[-] while ===" << std::endl;
         }
     }else{
-        std::cout << "2%%%%%%%%%%%%%%%%%!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
+        XABC_DBG << "2%%%%%%%%%%%%%%%%%!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
         auto true_statements =   enc->GetBlockStatementById(inst->GetBasicBlock()->GetTrueSuccessor());
         auto false_statements =  enc->GetBlockStatementById(inst->GetBasicBlock()->GetFalseSuccessor());
 
@@ -314,13 +314,13 @@ void AstGen::VisitIf(GraphVisitor *v, Inst *inst_base)
     /////////////////////////////////////////////////////////////////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////////////////
 
-    std::cout << "[-] VisitIf  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[-] VisitIf  >>>>>>>>>>>>>>>>>" << std::endl;
 }
 
 bool IsLoopBranch(AstGen *enc, BasicBlock *block);  // defined below
 
 uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
-    //std::cout << "if block: " << std::to_string(father->GetId()) << std::endl;
+    //XABC_DBG << "if block: " << std::to_string(father->GetId()) << std::endl;
     auto true_branch = father->GetTrueSuccessor();
     auto false_branch = father->GetFalseSuccessor();
 
@@ -431,17 +431,17 @@ uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
         return 0;
     }
 
-    std::cout << "analysis_block: " << std::to_string(analysis_block->GetId()) << std::endl;
-    std::cout << "true branch: " << std::to_string(true_branch->GetId()) << std::endl;
-    std::cout << "false_branch: " << std::to_string(false_branch->GetId()) << std::endl;
-    std::cout << "father: " << std::to_string(father->GetId()) << std::endl;
-    std::cout << "other_fater: " << std::to_string(other_father->GetId()) << std::endl;
+    XABC_DBG << "analysis_block: " << std::to_string(analysis_block->GetId()) << std::endl;
+    XABC_DBG << "true branch: " << std::to_string(true_branch->GetId()) << std::endl;
+    XABC_DBG << "false_branch: " << std::to_string(false_branch->GetId()) << std::endl;
+    XABC_DBG << "father: " << std::to_string(father->GetId()) << std::endl;
+    XABC_DBG << "other_fater: " << std::to_string(other_father->GetId()) << std::endl;
 
     uint32_t count = 0;
     while(other_father != father && other_father != start_block){
-        std::cout << "count: " << count << std::endl;
+        XABC_DBG << "count: " << count << std::endl;
         other_father = other_father->GetPredecessor(0);
-        std::cout << "predecessor id: " << other_father->GetId() << std::endl;
+        XABC_DBG << "predecessor id: " << other_father->GetId() << std::endl;
     }
 
     if(other_father == father ){
@@ -453,7 +453,7 @@ uint32_t onlyOneBranch(BasicBlock* father, AstGen * enc){
     }else if(other_father == start_block){
         return 0;
     }else{
-        //std::cout << "end other_father: " << std::to_string(other_father->GetId()) << std::endl;
+        //XABC_DBG << "end other_father: " << std::to_string(other_father->GetId()) << std::endl;
         return 0; // bad method -> sentinel
     }
     
@@ -520,7 +520,7 @@ bool IsLoopBranch(AstGen *enc, BasicBlock *block){
 }
 void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
 {
-    std::cout << "[+] VisitIfImm  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[+] VisitIfImm  >>>>>>>>>>>>>>>>>" << std::endl;
     auto enc = static_cast<AstGen *>(v);
     auto inst = inst_base->CastToIfImm();
     auto imm = inst->GetImm();
@@ -537,8 +537,8 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
         !(block->IsLoopValid() && block->IsLoopHeader()) &&
         enc->IsShortCircuitConditionBlock(block)) {
         enc->shortcircuit_condblocks_.insert(block);
-        std::cout << "[short-circuit] skip if for bb " << block->GetId() << std::endl;
-        std::cout << "[-] VisitIfImm  >>>>>>>>>>>>>>>>>" << std::endl;
+        XABC_DBG << "[short-circuit] skip if for bb " << block->GetId() << std::endl;
+        XABC_DBG << "[-] VisitIfImm  >>>>>>>>>>>>>>>>>" << std::endl;
         return;
     }
 
@@ -596,18 +596,18 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
         //         true_statements =   enc->GetBlockStatementById(block->GetTrueSuccessor());
         // }else{
 /*             if(ret == 0){
-                std::cout << "#VisitIfImm ret case: " << ret << std::endl;
+                XABC_DBG << "#VisitIfImm ret case: " << ret << std::endl;
                 enc->specialblockid.insert(block->GetTrueSuccessor()->GetId());
                 enc->specialblockid.insert(block->GetFalseSuccessor()->GetId());
                 
                 false_statements =  enc->GetBlockStatementById(block->GetFalseSuccessor());
                 true_statements =   enc->GetBlockStatementById(block->GetTrueSuccessor());
             }else if(ret == 1){
-                std::cout << "#VisitIfImm ret case: " << ret << std::endl;
+                XABC_DBG << "#VisitIfImm ret case: " << ret << std::endl;
                 enc->specialblockid.insert(block->GetTrueSuccessor()->GetId());
                 true_statements =   enc->GetBlockStatementById(block->GetTrueSuccessor());
             }else{
-                std::cout << "#VisitIfImm ret case: " << ret << std::endl;
+                XABC_DBG << "#VisitIfImm ret case: " << ret << std::endl;
                 enc->specialblockid.insert(block->GetFalseSuccessor()->GetId());
                 false_statements =   enc->GetBlockStatementById(block->GetFalseSuccessor());
             } */
@@ -619,7 +619,7 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
             // 2: only else
         */
             if(ret == 0 || IsLoopBranch(enc, block)){
-                std::cout << "#VisitIfImm ret case: " << ret << std::endl;
+                XABC_DBG << "#VisitIfImm ret case: " << ret << std::endl;
                 enc->specialblockid.insert(block->GetTrueSuccessor()->GetId());
                 enc->specialblockid.insert(block->GetFalseSuccessor()->GetId());
 
@@ -627,7 +627,7 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
                 true_statements =   enc->GetBlockStatementById(block->GetTrueSuccessor());
                 ret = 0;
             }else if(ret == 1){
-                std::cout << "#VisitIfImm ret case: " << ret << std::endl;
+                XABC_DBG << "#VisitIfImm ret case: " << ret << std::endl;
                 enc->specialblockid.insert(block->GetTrueSuccessor()->GetId());
                 true_statements =   enc->GetBlockStatementById(block->GetTrueSuccessor());
                 // Symmetric to the ret==2 case below: if the dropped FALSE
@@ -642,7 +642,7 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
                     false_statements = enc->GetBlockStatementById(block->GetFalseSuccessor());
                 }
             }else{
-                std::cout << "#VisitIfImm ret case: " << ret << std::endl;
+                XABC_DBG << "#VisitIfImm ret case: " << ret << std::endl;
                 enc->specialblockid.insert(block->GetFalseSuccessor()->GetId());
                 false_statements =   enc->GetBlockStatementById(block->GetFalseSuccessor());
                 // ret==2 normally drops the true successor (treated as post-if
@@ -670,7 +670,7 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
             enc->loopbranches_.insert(inst);
             enc->loopbranchblocks_.insert(block);
 
-            std::cout << "[+] do-while =====" << std::endl;
+            XABC_DBG << "[+] do-while =====" << std::endl;
             compiler::Loop* loop = block->GetLoop();
 
             auto back_edges = loop->GetBackEdges();
@@ -679,18 +679,18 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
             es2panda::ir::DoWhileStatement* dowhilestatement;
             test_expression =  enc->InverseTestExpression(enc, inst, ret, src_expression, false);
 
-            std::cout << "true_statements size: " << true_statements->AsBlockStatement()->Statements().size() << std::endl;
+            XABC_DBG << "true_statements size: " << true_statements->AsBlockStatement()->Statements().size() << std::endl;
 
             auto dowhilebody = enc->CopyAndCreateNewBlockStatement(true_statements);
             if(block->GetTrueSuccessor() == loop->GetHeader()){
-                std::cout << "do while case 1" << std::endl;
+                XABC_DBG << "do while case 1" << std::endl;
                 dowhilestatement = AllocNode<es2panda::ir::DoWhileStatement>(enc,
                     nullptr,
                     dowhilebody,
                     test_expression
                 );
             }else{
-                std::cout << "do while case 2" << std::endl;
+                XABC_DBG << "do while case 2" << std::endl;
                 dowhilestatement = AllocNode<es2panda::ir::DoWhileStatement>(enc,
                         nullptr,
                         dowhilebody,
@@ -706,7 +706,7 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
             }
             
             enc->AddInstAst2BlockStatemntByBlock(loop->GetPreHeader(), enc->GetBlockStatementById(block->GetTrueSuccessor())); 
-            std::cout << "[-] do-while =====" << std::endl;
+            XABC_DBG << "[-] do-while =====" << std::endl;
         }else if(block->IsLoopValid() && !block->GetLoop()->IsRoot() && IsLoopConditionBranch(block)  &&  enc->loop2type[block->GetLoop()] == 0 &&
                 (block->IsLoopHeader() || enc->loopbranchblocks_.find(block->GetLoop()->GetHeader()) == enc->loopbranchblocks_.end())
                ){
@@ -715,7 +715,7 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
             enc->loopbranches_.insert(inst);
             enc->loopbranchblocks_.insert(block);
 
-            std::cout << "[+] while ===" << std::endl;
+            XABC_DBG << "[+] while ===" << std::endl;
             compiler::Loop* loop = block->GetLoop();
             auto back_edges = loop->GetBackEdges();
             LogBackEdgeId(back_edges);
@@ -724,7 +724,7 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
             auto header = loop->GetHeader();
             //if( LoopContainBlock(loop, block->GetFalseSuccessor()) && false_statements != nullptr){
             if(LoopContainBlock(loop, block->GetFalseSuccessor()) ){
-                std::cout << "while case 1" << std::endl;
+                XABC_DBG << "while case 1" << std::endl;
                 if(!header->IsTryBegin() && enc->whileheader2redundant.find(header) != enc->whileheader2redundant.end() && enc->whileheader2redundant[header]->Statements().size() != 0 ){
                     // add redundant statement in while-header
                     enc->whilebody2redundant[block->GetFalseSuccessor()] = enc->whileheader2redundant[header];
@@ -738,7 +738,7 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
                         true_statements
                         );        
             }else{
-                std::cout << "while case 2" << std::endl;
+                XABC_DBG << "while case 2" << std::endl;
                 if(!header->IsTryBegin() && enc->whileheader2redundant.find(header) != enc->whileheader2redundant.end() && enc->whileheader2redundant[header]->Statements().size() != 0){
                     // add redundant statement in while-header
                     enc->whilebody2redundant[block->GetTrueSuccessor()] = enc->whileheader2redundant[header];
@@ -770,20 +770,20 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
             if(false_statements != nullptr){
                 enc->AddInstAst2BlockStatemntByInst(inst, false_statements);
             }
-            std::cout << "[-] while ===" << std::endl;
+            XABC_DBG << "[-] while ===" << std::endl;
         }else{
-            std::cout << "[+] if ===" << std::endl;
+            XABC_DBG << "[+] if ===" << std::endl;
             es2panda::ir::IfStatement* ifStatement;
 
             if(ret == 2){
-                std::cout << "if case 1" << std::endl;
+                XABC_DBG << "if case 1" << std::endl;
                 std::swap(true_statements, false_statements);
                 test_expression = enc->InverseTestExpression(enc, inst, ret, src_expression, true);
                 ifStatement = AllocNode<es2panda::ir::IfStatement>(enc, test_expression, true_statements, false_statements);
             }else{
                 if(inst->GetCc() == compiler::CC_EQ){
                     if(false_statements != nullptr){
-                        std::cout << "if case 2" << std::endl;
+                        XABC_DBG << "if case 2" << std::endl;
                         std::swap(true_statements, false_statements);
                         test_expression = enc->InverseTestExpression(enc, inst, ret, src_expression, true);
                     }else{
@@ -794,11 +794,11 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
                         // nullptr`) would DROP the whole if -> empty `while(){}`. Keep
                         // the body as the consequent and invert the CC_EQ test in place
                         // (`!==` -> `===`).
-                        std::cout << "if case 2b" << std::endl;
+                        XABC_DBG << "if case 2b" << std::endl;
                         test_expression = enc->InverseTestExpression(enc, inst, ret, src_expression, false);
                     }
                 }else{
-                    std::cout << "if case 3" << std::endl;
+                    XABC_DBG << "if case 3" << std::endl;
                     test_expression = enc->InverseTestExpression(enc, inst, ret, src_expression, false);
                 }
                 ifStatement = AllocNode<es2panda::ir::IfStatement>(enc, test_expression, true_statements, false_statements);
@@ -837,7 +837,7 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
                     enc->AddInstAst2BlockStatemntByInst(inst, cont);
                 }
             }
-            std::cout << "[-] if ===" << std::endl;
+            XABC_DBG << "[-] if ===" << std::endl;
 
         }
         /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -847,13 +847,13 @@ void AstGen::VisitIfImm(GraphVisitor *v, Inst *inst_base)
     }else{
         return; // skip unhandled if-imm case
     }
-    std::cout << "[-] VisitIfImm  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[-] VisitIfImm  >>>>>>>>>>>>>>>>>" << std::endl;
 }
 
 
 void AstGen::VisitLoadString(GraphVisitor *v, Inst *inst_base)
 {
-    std::cout << "[+] VisitLoadString  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[+] VisitLoadString  >>>>>>>>>>>>>>>>>" << std::endl;
     auto enc = static_cast<AstGen *>(v);
     auto inst = inst_base->CastToLoadString();
 
@@ -865,12 +865,12 @@ void AstGen::VisitLoadString(GraphVisitor *v, Inst *inst_base)
     enc->SetExpressionByRegister(inst, inst->GetDstReg(), src_expression);
    
 
-    std::cout << "[-] VisitLoadString  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[-] VisitLoadString  >>>>>>>>>>>>>>>>>" << std::endl;
 }
 
 void AstGen::VisitReturn(GraphVisitor *v, Inst *inst_base)
 {
-    std::cout << "[+] VisitReturn  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[+] VisitReturn  >>>>>>>>>>>>>>>>>" << std::endl;
     auto enc = static_cast<AstGen *>(v);
     auto inst = inst_base->CastToReturn();
 
@@ -879,12 +879,12 @@ void AstGen::VisitReturn(GraphVisitor *v, Inst *inst_base)
     auto returnstatement = AllocNode<es2panda::ir::ReturnStatement>(enc, return_expression);
     enc->AddInstAst2BlockStatemntByInst(inst, returnstatement);
 
-    std::cout << "[-] VisitReturn  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[-] VisitReturn  >>>>>>>>>>>>>>>>>" << std::endl;
 }
 
 void AstGen::VisitCastValueToAnyType(GraphVisitor *visitor, Inst *inst)
 {
-    std::cout << "[+] VisitCastValueToAnyType  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[+] VisitCastValueToAnyType  >>>>>>>>>>>>>>>>>" << std::endl;
     auto enc = static_cast<AstGen *>(visitor);
 
     auto cvat = inst->CastToCastValueToAnyType();
@@ -939,26 +939,26 @@ void AstGen::VisitCastValueToAnyType(GraphVisitor *visitor, Inst *inst)
 
     enc->SetExpressionByRegister(inst, cvat->GetDstReg(), source);
 
-    std::cout << "[-] VisitCastValueToAnyType  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[-] VisitCastValueToAnyType  >>>>>>>>>>>>>>>>>" << std::endl;
 }
 
 
 void AstGen::VisitIntrinsic(GraphVisitor *visitor, Inst *inst_base)
 {
-    std::cout << "[+] VisitIntrinsic  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[+] VisitIntrinsic  >>>>>>>>>>>>>>>>>" << std::endl;
     ASSERT(inst_base->IsIntrinsic());
     VisitEcma(visitor, inst_base);
-    std::cout << "[-] VisitIntrinsic  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[-] VisitIntrinsic  >>>>>>>>>>>>>>>>>" << std::endl;
 }
 
 void AstGen::VisitCatchPhi(GraphVisitor *visitor, Inst *inst)
 {
-    std::cout << "[+] VisitCatchPhi  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[+] VisitCatchPhi  >>>>>>>>>>>>>>>>>" << std::endl;
     // The Acc register stores the exception object.
     // Create an STA instruction if the exception is used later in virtual registers.
     
     if (inst->CastToCatchPhi()->IsAcc()) {
-        std::cout << "cast to catchphi" << std::endl;
+        XABC_DBG << "cast to catchphi" << std::endl;
         auto enc = static_cast<AstGen *>(visitor);
         enc->SetExpressionByRegister(inst, inst->GetDstReg(), enc->constant_catcherror);
         bool hasRealUsers = false;
@@ -972,7 +972,7 @@ void AstGen::VisitCatchPhi(GraphVisitor *visitor, Inst *inst)
             enc->SetExpressionByRegister(inst, inst->GetDstReg(), enc->constant_catcherror);
         }
     }
-    std::cout << "[-] VisitCatchPhi  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[-] VisitCatchPhi  >>>>>>>>>>>>>>>>>" << std::endl;
 }
 
 #include "astgen_auxiins.cpp"

@@ -1,6 +1,26 @@
 #ifndef DECOMPILER_BASE
 #define DECOMPILER_BASE
 
+#include <iostream>
+
+// ---------------------------------------------------------------------------
+// Gated debug output. Declared FIRST (before any project header that may use
+// XABC_DBG, e.g. ast.h below) so the macro is always visible.
+//
+// xabc historically printed hundreds of per-function / per-IR-instruction lines
+// to stdout. On a large real HAP (an 11 MB modules.abc with tens of thousands of
+// functions) this floods the log with ~1e9 lines / tens of GB and looks like a
+// hang. XABC_DBG routes all that debug through a single gate:
+//   - env XABC_DEBUG=1 (or "true"/"on") -> stream to std::cerr as before
+//   - unset / "0"                        -> a process-wide null sink (no output)
+// Default is OFF, so a plain decompile is quiet and cannot flood the disk.
+// (Debug text never fed the .ts output, so silencing it does not change the
+// decompilation result — only the noise.)
+extern bool g_xabc_debug;
+std::ostream& XabcDbgStream();
+void XabcInitDebugFromEnv();
+#define XABC_DBG XabcDbgStream()
+
 #include "libpandabase/mem/arena_allocator.h"
 #include "libpandabase/mem/pool_manager.h"
 

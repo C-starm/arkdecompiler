@@ -13,11 +13,11 @@ void LexicalEnv::AddIndexes(size_t index){
 }
 
 void LexicalEnv::LogIndexes() {
-    std::cout << "[*] index >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" << std::endl;
+    XABC_DBG << "[*] index >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" << std::endl;
     for (const auto& value : indexes_) {
-        std::cout << value << " ";
+        XABC_DBG << value << " ";
     }
-    std::cout << std::endl;
+    XABC_DBG << std::endl;
 }
 
 
@@ -257,7 +257,7 @@ void DealWithGlobalLexicalWaitlist(uint32_t tier, uint32_t index, std::string cl
     for (auto it = globallexical_waitlist->begin(); it != globallexical_waitlist->end(); ) {
         auto* waitelement = *it;
 
-        std::cout << "DealWithGlobalLexicalWaitlist: tier: " << tier << " , index: " << index << std::endl; 
+        XABC_DBG << "DealWithGlobalLexicalWaitlist: tier: " << tier << " , index: " << index << std::endl; 
         
         if(waitelement->IsSetSafe(tier, index)){
             waitelement->Set(tier, index, new std::string(closure_name));
@@ -281,14 +281,14 @@ void MergeMethod2LexicalMap(Inst* inst, std::map<panda::compiler::BasicBlock*, L
         return;
     }
     auto lexicalenvstack = bb2lexicalenvstack[inst->GetBasicBlock()];
-    std::cout << "lexicalenvstack size: " << lexicalenvstack->Size() << std::endl;
+    XABC_DBG << "lexicalenvstack size: " << lexicalenvstack->Size() << std::endl;
     for (const auto& [tier, source_indexes] : source_lexicalmap->second) {
-        // std::cout << "source_indexes: ";
+        // XABC_DBG << "source_indexes: ";
         // for(const auto&v : source_indexes){
-        //     std::cout << " , " << v;
+        //     XABC_DBG << " , " << v;
         // }
-        // std::cout << std::endl;
-        std::cout << "tier: " << tier << std::endl;
+        // XABC_DBG << std::endl;
+        XABC_DBG << "tier: " << tier << std::endl;
         lexicalenvstack->SetIndexes(tier, source_indexes);
     }
 }
@@ -306,11 +306,11 @@ void PrintInnerMethod2LexicalMap(std::map<uint32_t, std::map<uint32_t,  std::set
         uint32_t key = pair.first;
         const std::set<size_t>& vec = pair.second;
 
-        std::cout << "Key: " << key << " Values: ";
+        XABC_DBG << "Key: " << key << " Values: ";
         for (const auto& value : vec) {
-            std::cout << value << " ";
+            XABC_DBG << value << " ";
         }
-        std::cout << std::endl;
+        XABC_DBG << std::endl;
     }
 }
 
@@ -325,26 +325,26 @@ uint32_t SearchStartposForCreatePrivateproperty(Inst *inst, std::map<panda::comp
     std::vector<size_t> sorted(vec.begin(), vec.end());
     std::sort(sorted.begin(), sorted.end());
 
-    std::cout << "lexicalenvstack size: " << lexicalenvstack->Size() << std::endl;
-    std::cout << "sorted size: " << sorted.size() << std::endl;
+    XABC_DBG << "lexicalenvstack size: " << lexicalenvstack->Size() << std::endl;
+    XABC_DBG << "sorted size: " << sorted.size() << std::endl;
     
     for(const auto & i: vec){
-        std::cout << "X - #: " << i << std::endl;
+        XABC_DBG << "X - #: " << i << std::endl;
     }
 
-    std::cout << ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
 
     ////////////////////////////////////////////////////////////
     if(lexicalenvstack->Size() > 2){
         auto aa = lexicalenvstack->stack_[lexicalenvstack->Size() - 2];
         for(const auto & i: aa.indexes_){
-            std::cout << "Y - #: " << i << std::endl;
+            XABC_DBG << "Y - #: " << i << std::endl;
         }
     }
     ////////////////////////////////////////////////////////////
 
     for (size_t i = 0; i < sorted.size(); ++i) {
-        std::cout << "i: " << i << " , sorted[i]: " <<  sorted[i] << std::endl;
+        XABC_DBG << "i: " << i << " , sorted[i]: " <<  sorted[i] << std::endl;
         if (i != sorted[i]) {
             return i;
         }

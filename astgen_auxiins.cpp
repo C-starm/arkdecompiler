@@ -1,5 +1,5 @@
 void AstGen::VisitPhi(GraphVisitor* v, Inst* inst_base) {
-    std::cout << "[+] VisitPhi  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[+] VisitPhi  >>>>>>>>>>>>>>>>>" << std::endl;
     auto enc = static_cast<AstGen*>(v);
     auto inst = inst_base->CastToPhi();
     ArenaVector<es2panda::ir::Expression *> arguments(enc->parser_program_->Allocator()->Adapter());
@@ -26,9 +26,9 @@ void AstGen::VisitPhi(GraphVisitor* v, Inst* inst_base) {
             // Bind the phi's value to the logical expression so its single user
             // (return / further use) inlines it. Materialise only if multi-user.
             enc->HandleNewCreatedExpression(inst, logical);
-            std::cout << "[short-circuit] phi " << inst->GetId()
+            XABC_DBG << "[short-circuit] phi " << inst->GetId()
                       << (merge_on_truthy ? " => ||" : " => &&") << std::endl;
-            std::cout << "[-] VisitPhi  <<<<<<<<<<<<<<<" << std::endl;
+            XABC_DBG << "[-] VisitPhi  <<<<<<<<<<<<<<<" << std::endl;
             return;
         }
     }
@@ -43,8 +43,8 @@ void AstGen::VisitPhi(GraphVisitor* v, Inst* inst_base) {
         auto* ternary = enc->TryBuildValueSelectTernary(inst);
         if(ternary != nullptr){
             enc->HandleNewCreatedExpression(inst, ternary);
-            std::cout << "[value-ternary] phi " << inst->GetId() << " => cond ? X : Y" << std::endl;
-            std::cout << "[-] VisitPhi  <<<<<<<<<<<<<<<" << std::endl;
+            XABC_DBG << "[value-ternary] phi " << inst->GetId() << " => cond ? X : Y" << std::endl;
+            XABC_DBG << "[-] VisitPhi  <<<<<<<<<<<<<<<" << std::endl;
             return;
         }
     }
@@ -126,25 +126,25 @@ void AstGen::VisitPhi(GraphVisitor* v, Inst* inst_base) {
         }
     }
 
-    std::cout << "[-] VisitPhi  <<<<<<<<<<<<<<<" << std::endl;
+    XABC_DBG << "[-] VisitPhi  <<<<<<<<<<<<<<<" << std::endl;
 }
 
 void AstGen::VisitSaveState(GraphVisitor* v, Inst* inst_base) {
-    std::cout << "[+] VisitSaveState  >>>>>>>>>>>>>>>>>" << std::endl;
-    std::cout << "[-] VisitSaveState  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[+] VisitSaveState  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[-] VisitSaveState  >>>>>>>>>>>>>>>>>" << std::endl;
 }
 void AstGen::VisitParameter(GraphVisitor* v, Inst* inst_base) {
-    std::cout << "[+] VisitParameter  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[+] VisitParameter  >>>>>>>>>>>>>>>>>" << std::endl;
     auto enc = static_cast<AstGen *>(v);
     auto inst = inst_base->CastToParameter();
 
     panda::es2panda::ir::Expression* arg = enc->getParameterName(inst->GetArgNumber());    
     enc->SetExpressionByRegister(inst, inst->GetDstReg(), arg);
-    std::cout << "[-] VisitParameter  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[-] VisitParameter  >>>>>>>>>>>>>>>>>" << std::endl;
 }
 
 void AstGen::VisitTry(GraphVisitor* v, Inst* inst_base) {
-    std::cout << "[+] VisitTry  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[+] VisitTry  >>>>>>>>>>>>>>>>>" << std::endl;
     auto enc = static_cast<AstGen*>(v);
     auto inst = inst_base->CastToTry();
 
@@ -206,6 +206,6 @@ void AstGen::VisitTry(GraphVisitor* v, Inst* inst_base) {
     
     enc->AddInstAst2BlockStatemntByInst(inst_base, tryStatement);
 
-    std::cout << "[-] VisitTry  >>>>>>>>>>>>>>>>>" << std::endl;
+    XABC_DBG << "[-] VisitTry  >>>>>>>>>>>>>>>>>" << std::endl;
 
 }

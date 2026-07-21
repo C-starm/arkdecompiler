@@ -1,9 +1,48 @@
 #include "base.h"
 
+#include <cstdlib>
+#include <cstring>
+#include <ostream>
+#include <streambuf>
+
 // void HandleError(const std::string& errorMessage) {
 //     std::cerr << "Error: " << errorMessage << std::endl;
-//     std::exit(EXIT_FAILURE); 
+//     std::exit(EXIT_FAILURE);
 // }
+
+// ---------------------------------------------------------------------------
+// Gated debug output (see base.h). Default OFF: a plain decompile is quiet and
+// cannot flood the disk on a large abc. Enable with env XABC_DEBUG=1.
+bool g_xabc_debug = false;
+
+namespace {
+// A streambuf that discards everything — the null sink used when debug is off.
+class NullBuffer : public std::streambuf {
+public:
+    int overflow(int c) override { return c; }
+    std::streamsize xsputn(const char*, std::streamsize n) override { return n; }
+};
+NullBuffer g_null_buffer;
+std::ostream g_null_stream(&g_null_buffer);
+bool g_xabc_debug_inited = false;
+}  // namespace
+
+void XabcInitDebugFromEnv() {
+    const char* v = std::getenv("XABC_DEBUG");
+    g_xabc_debug = (v != nullptr) &&
+                   (std::strcmp(v, "1") == 0 || std::strcmp(v, "true") == 0 ||
+                    std::strcmp(v, "on") == 0 || std::strcmp(v, "TRUE") == 0);
+    g_xabc_debug_inited = true;
+}
+
+std::ostream& XabcDbgStream() {
+    // Lazy env read so callers that never call XabcInitDebugFromEnv() (e.g. unit
+    // harnesses) still get the correct default-off behaviour.
+    if (!g_xabc_debug_inited) {
+        XabcInitDebugFromEnv();
+    }
+    return g_xabc_debug ? std::cerr : g_null_stream;
+}
 
 
 std::string RemoveArgumentsOfFunc(const std::string& input) {
