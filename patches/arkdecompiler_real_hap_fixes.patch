@@ -47,15 +47,25 @@ index e0d5044..cd44ef2 100644
  }
 \ No newline at end of file
 diff --git a/arkts.cpp b/arkts.cpp
-index 09d4c40..3a6aa8a 100644
+index 09d4c40..8a86110 100644
 --- a/arkts.cpp
 +++ b/arkts.cpp
-@@ -2,6 +2,42 @@
+@@ -2,6 +2,52 @@
  
  namespace panda::es2panda::ir {
  
 +// Forward decls (defined later in this file).
 +static std::string EscapeForArkTSString(const std::string &s);
++
++// RAII counter for the emit-recursion guard: increments on construction,
++// decrements on every scope exit (all early returns / breaks included).
++namespace {
++struct EmitDepthScope {
++    int32_t &d;
++    explicit EmitDepthScope(int32_t &depth) : d(depth) { ++d; }
++    ~EmitDepthScope() { --d; }
++};
++}  // namespace
 +
 +// True if `s` is well-formed standard UTF-8 (valid CJK/emoji identifiers pass).
 +static bool IsValidUtf8(const std::string &s)
@@ -93,7 +103,7 @@ index 09d4c40..3a6aa8a 100644
  ArkTSGen::ArkTSGen(const BlockStatement *program, util::StringView sourceCode) : index_(sourceCode), indent_(0)
  {
      SerializeObject(reinterpret_cast<const ir::AstNode *>(program));
-@@ -93,26 +129,78 @@ void ArkTSGen::WriteIndent(){
+@@ -93,26 +139,93 @@ void ArkTSGen::WriteIndent(){
      } 
  }
  
@@ -137,6 +147,21 @@ index 09d4c40..3a6aa8a 100644
      }
  
 -    switch(node->Type()){ 
++    // Cyclic-AST guard (see arkts.h): cut on a re-entered node (cycle) or the depth
++    // backstop; emit a placeholder and unwind instead of overflowing the stack.
++    if(emit_path_.count(node) != 0 || emit_depth_ > kEmitDepthLimit){
++        if(!emit_depth_tripped_){
++            emit_depth_tripped_ = true;
++            XABC_DBG << "[!] cyclic/too-deep AST cut in EmitExpression" << std::endl;
++        }
++        ss_ << "/*xabc:cyclic-ast*/undefined";
++        return;
++    }
++    EmitDepthScope _emit_scope(emit_depth_);
++    emit_path_.insert(node);
++    struct PathPop { std::unordered_set<const ir::AstNode*>& s; const ir::AstNode* n;
++                     ~PathPop(){ s.erase(n); } } _path_pop{emit_path_, node};
++
 +    switch(node->Type()){
          case AstNodeType::BINARY_EXPRESSION:{
 -            std::cout << "enter BINARY_EXPRESSION >>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl; 
@@ -177,7 +202,7 @@ index 09d4c40..3a6aa8a 100644
              auto unaryexpression = node->AsUnaryExpression();
              ss_ << TokenToString(unaryexpression->OperatorType());
              WriteSpace();
-@@ -122,7 +210,7 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
+@@ -122,7 +235,7 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
  
          case AstNodeType::ASSIGNMENT_EXPRESSION:{
              auto assignexpression = node->AsAssignmentExpression();
@@ -186,7 +211,7 @@ index 09d4c40..3a6aa8a 100644
              
              this->EmitExpression(assignexpression->Left());
              WriteSpace();
-@@ -133,7 +221,7 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
+@@ -133,7 +246,7 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
          }
          case AstNodeType::IDENTIFIER:{
              auto identifier = node->AsIdentifier();
@@ -195,7 +220,7 @@ index 09d4c40..3a6aa8a 100644
              break;
          }
  
-@@ -167,7 +255,17 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
+@@ -167,7 +280,17 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
          }
          case AstNodeType::MEMBER_EXPRESSION:{
              auto member_expression = node->AsMemberExpression();
@@ -214,7 +239,7 @@ index 09d4c40..3a6aa8a 100644
              if(member_expression->IsComputed()){
                  this->WriteLeftBracket();
                  this->EmitExpression(member_expression->Property());
-@@ -180,7 +278,7 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
+@@ -180,7 +303,7 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
          }
  
          case AstNodeType::OBJECT_EXPRESSION:{
@@ -223,7 +248,7 @@ index 09d4c40..3a6aa8a 100644
              auto objexpression = node->AsObjectExpression();
              
              WriteLeftBrace();
-@@ -219,7 +317,7 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
+@@ -219,7 +342,7 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
          }
  
          case AstNodeType::ARRAY_EXPRESSION:{
@@ -232,7 +257,7 @@ index 09d4c40..3a6aa8a 100644
              auto arrayexpression = node->AsArrayExpression();
              
              WriteLeftBracket();
-@@ -318,6 +416,26 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
+@@ -318,6 +441,26 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
              break;
          }
  
@@ -259,7 +284,7 @@ index 09d4c40..3a6aa8a 100644
          default:
              HandleError("#EmitExpression : unsupport expression");;
  
-@@ -467,7 +585,7 @@ void ArkTSGen::EmitTryStatement(const ir::AstNode *node){
+@@ -467,7 +610,7 @@ void ArkTSGen::EmitTryStatement(const ir::AstNode *node){
  }
  
  void ArkTSGen::EmitIfStatement(const ir::AstNode *node){
@@ -268,7 +293,7 @@ index 09d4c40..3a6aa8a 100644
      auto ifstatement = node->AsIfStatement();
      if(ifstatement->Consequent() == nullptr ||  ifstatement->Consequent()->AsBlockStatement()->Statements().size() == 0){
          this->WriteNewLine();
-@@ -506,11 +624,11 @@ void ArkTSGen::EmitIfStatement(const ir::AstNode *node){
+@@ -506,11 +649,11 @@ void ArkTSGen::EmitIfStatement(const ir::AstNode *node){
      }
      this->WriteNewLine();
      
@@ -282,7 +307,7 @@ index 09d4c40..3a6aa8a 100644
      auto whilestatement = node->AsWhileStatement();
  
      // while(test){
-@@ -531,11 +649,11 @@ void ArkTSGen::EmitWhileStatement(const ir::AstNode *node){
+@@ -531,11 +674,11 @@ void ArkTSGen::EmitWhileStatement(const ir::AstNode *node){
      this->WriteRightBrace();
      this->WriteNewLine();
          
@@ -296,7 +321,7 @@ index 09d4c40..3a6aa8a 100644
      auto dowhilestatement = node->AsDoWhileStatement();
      
      // do {
-@@ -556,12 +674,12 @@ void ArkTSGen::EmitDoWhileStatement(const ir::AstNode *node){
+@@ -556,12 +699,12 @@ void ArkTSGen::EmitDoWhileStatement(const ir::AstNode *node){
      this->EmitExpression(dowhilestatement->Test());
      this->WriteRightParentheses();
      this->WriteTrailingSemicolon();        
@@ -311,7 +336,7 @@ index 09d4c40..3a6aa8a 100644
      auto importspecifier = node->AsImportSpecifier();
      
      this->WriteKeyWords("import");
-@@ -579,7 +697,7 @@ void ArkTSGen::EmitImportSpecifier(const ir::AstNode *node){
+@@ -579,7 +722,7 @@ void ArkTSGen::EmitImportSpecifier(const ir::AstNode *node){
  }
  
  void ArkTSGen::EmitImportDeclaration(const ir::AstNode *node){
@@ -320,7 +345,7 @@ index 09d4c40..3a6aa8a 100644
      auto importdeclaration = node->AsImportDeclaration();
      
      for (const auto *astnode : importdeclaration->Specifiers()) {
-@@ -606,7 +724,7 @@ void ArkTSGen::EmitImportDeclaration(const ir::AstNode *node){
+@@ -606,7 +749,7 @@ void ArkTSGen::EmitImportDeclaration(const ir::AstNode *node){
  }
  
  void ArkTSGen::EmitExportAllDeclaration(const ir::AstNode *node){
@@ -329,7 +354,7 @@ index 09d4c40..3a6aa8a 100644
      auto exportdeclaration = node->AsExportAllDeclaration();
      
      this->WriteKeyWords("export");
-@@ -620,7 +738,7 @@ void ArkTSGen::EmitExportAllDeclaration(const ir::AstNode *node){
+@@ -620,7 +763,7 @@ void ArkTSGen::EmitExportAllDeclaration(const ir::AstNode *node){
  }
  
  void ArkTSGen::EmitExportSpecifier(const ir::AstNode *node){
@@ -338,7 +363,7 @@ index 09d4c40..3a6aa8a 100644
      auto exportspecifier = node->AsExportSpecifier();
      
      this->WriteKeyWords("export");
-@@ -634,7 +752,7 @@ void ArkTSGen::EmitExportSpecifier(const ir::AstNode *node){
+@@ -634,7 +777,7 @@ void ArkTSGen::EmitExportSpecifier(const ir::AstNode *node){
  }
  
  void ArkTSGen::EmitExportNamedDeclaration(const ir::AstNode *node){
@@ -347,7 +372,7 @@ index 09d4c40..3a6aa8a 100644
      auto exportnameddeclaration = node->AsExportNamedDeclaration();
      
      for (const auto *astnode : exportnameddeclaration->Specifiers()) {
-@@ -661,13 +779,13 @@ void ArkTSGen::EmitExportNamedDeclaration(const ir::AstNode *node){
+@@ -661,13 +804,13 @@ void ArkTSGen::EmitExportNamedDeclaration(const ir::AstNode *node){
  }
  
  void ArkTSGen::EmitClassDeclaration(const ir::AstNode *node){
@@ -363,7 +388,7 @@ index 09d4c40..3a6aa8a 100644
      this->EmitExpression(classdefinition->Ident());
      this->WriteSpace();
  
-@@ -700,7 +818,7 @@ void ArkTSGen::EmitClassDeclaration(const ir::AstNode *node){
+@@ -700,7 +843,7 @@ void ArkTSGen::EmitClassDeclaration(const ir::AstNode *node){
  }
  
  void ArkTSGen::EmitMethodDefinition(const ir::AstNode *node){
@@ -372,7 +397,28 @@ index 09d4c40..3a6aa8a 100644
      auto methoddefinition = node->AsMethodDefinition();
      
      this->EmitExpression(methoddefinition->Key());
-@@ -745,121 +863,121 @@ void ArkTSGen::EmitStatement(const ir::AstNode *node)
+@@ -741,125 +884,142 @@ void ArkTSGen::EmitStatement(const ir::AstNode *node)
+         HandleError("#EmitStatement: emitStatement for null astnode");
+     }
+ 
++    // Cyclic-AST guard (see arkts.h): if this node is already on the emit stack we
++    // have closed a cycle — cut it now; otherwise honour the depth backstop. Either
++    // way emit a marker and unwind instead of overflowing the stack (SIGSEGV).
++    if(emit_path_.count(node) != 0 || emit_depth_ > kEmitDepthLimit){
++        if(!emit_depth_tripped_){
++            emit_depth_tripped_ = true;
++            XABC_DBG << "[!] cyclic/too-deep AST cut in EmitStatement" << std::endl;
++        }
++        this->WriteIndent();
++        ss_ << "/*xabc:cyclic-ast — subtree truncated*/" << std::endl;
++        return;
++    }
++    EmitDepthScope _emit_scope(emit_depth_);
++    emit_path_.insert(node);
++    struct PathPop { std::unordered_set<const ir::AstNode*>& s; const ir::AstNode* n;
++                     ~PathPop(){ s.erase(n); } } _path_pop{emit_path_, node};
++
+     if(node->Type() != AstNodeType::BLOCK_STATEMENT && node->Type() != AstNodeType::VARIABLE_DECLARATOR ){
          this->WriteIndent();
      }
  
@@ -517,7 +563,7 @@ index 09d4c40..3a6aa8a 100644
              HandleError("#EmitStatement : unsupport statement");
      }
  
-@@ -962,14 +1080,85 @@ void ArkTSGen::SerializePropKey(const char *str)
+@@ -962,14 +1122,85 @@ void ArkTSGen::SerializePropKey(const char *str)
      ss_ << ": ";
  }
  
@@ -605,7 +651,7 @@ index 09d4c40..3a6aa8a 100644
  }
  
  void ArkTSGen::SerializeNumber(size_t number)
-@@ -1007,7 +1196,7 @@ void ArkTSGen::SerializeConstant(Property::Constant constant)
+@@ -1007,7 +1238,7 @@ void ArkTSGen::SerializeConstant(Property::Constant constant)
              break;
          }
          default: {
@@ -614,6 +660,47 @@ index 09d4c40..3a6aa8a 100644
              UNREACHABLE();
          }
      }
+diff --git a/arkts.h b/arkts.h
+index 96fad74..553759d 100644
+--- a/arkts.h
++++ b/arkts.h
+@@ -1,6 +1,7 @@
+ #ifndef DECOMPILER_ARKTS
+ #define DECOMPILER_ARKTS
+ 
++#include <unordered_set>
+ #include "base.h"
+ 
+ namespace panda::es2panda::ir {
+@@ -231,6 +232,28 @@ private:
+     int32_t singleindent_ = 2;
+     bool dumpNodeOnly_ = true;
+ 
++    // Emit-recursion guard. A malformed AST can contain a CYCLE (a statement whose
++    // body transitively points back to an ancestor); the recursive emit then loops
++    // forever and overflows the stack (SIGSEGV) — observed on real HAPs where three
++    // records crashed xabc this way.
++    //
++    // Two layers:
++    //  1) emit_path_ — the set of AstNode pointers currently on the recursion stack.
++    //     Re-entering a node already on the path IS the cycle; we cut it immediately
++    //     (O(path length)), so a pathological wide cycle is severed the first time it
++    //     closes instead of being expanded thousands of levels deep (which, even with
++    //     a depth cap, blows up to an enormous/slow output).
++    //  2) emit_depth_ / kEmitDepthLimit — a plain depth backstop for
++    //     legitimately-but-absurdly-deep or indirectly-recursive shapes the path set
++    //     might not catch. 2000 is far beyond any real hand-written nesting yet well
++    //     under the frame count that overflows an 8 MB stack.
++    // On either trip we write a marker comment and unwind, turning a hard crash into a
++    // skipped subtree so the rest of the file still decompiles.
++    std::unordered_set<const ir::AstNode*> emit_path_;
++    int32_t emit_depth_ = 0;
++    bool emit_depth_tripped_ = false;
++    static constexpr int32_t kEmitDepthLimit = 2000;
++
+ 
+ 
+ 
 diff --git a/ast.h b/ast.h
 index e17b7ee..69dba3e 100644
 --- a/ast.h
