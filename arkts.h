@@ -1,6 +1,7 @@
 #ifndef DECOMPILER_ARKTS
 #define DECOMPILER_ARKTS
 
+#include <unordered_set>
 #include "base.h"
 
 namespace panda::es2panda::ir {
@@ -230,6 +231,28 @@ private:
     int32_t indent_;
     int32_t singleindent_ = 2;
     bool dumpNodeOnly_ = true;
+
+    // Emit-recursion guard. A malformed AST can contain a CYCLE (a statement whose
+    // body transitively points back to an ancestor); the recursive emit then loops
+    // forever and overflows the stack (SIGSEGV) — observed on real HAPs where three
+    // records crashed xabc this way.
+    //
+    // Two layers:
+    //  1) emit_path_ — the set of AstNode pointers currently on the recursion stack.
+    //     Re-entering a node already on the path IS the cycle; we cut it immediately
+    //     (O(path length)), so a pathological wide cycle is severed the first time it
+    //     closes instead of being expanded thousands of levels deep (which, even with
+    //     a depth cap, blows up to an enormous/slow output).
+    //  2) emit_depth_ / kEmitDepthLimit — a plain depth backstop for
+    //     legitimately-but-absurdly-deep or indirectly-recursive shapes the path set
+    //     might not catch. 2000 is far beyond any real hand-written nesting yet well
+    //     under the frame count that overflows an 8 MB stack.
+    // On either trip we write a marker comment and unwind, turning a hard crash into a
+    // skipped subtree so the rest of the file still decompiles.
+    std::unordered_set<const ir::AstNode*> emit_path_;
+    int32_t emit_depth_ = 0;
+    bool emit_depth_tripped_ = false;
+    static constexpr int32_t kEmitDepthLimit = 2000;
 
 
 

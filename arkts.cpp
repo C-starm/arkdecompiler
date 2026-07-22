@@ -5,6 +5,16 @@ namespace panda::es2panda::ir {
 // Forward decls (defined later in this file).
 static std::string EscapeForArkTSString(const std::string &s);
 
+// RAII counter for the emit-recursion guard: increments on construction,
+// decrements on every scope exit (all early returns / breaks included).
+namespace {
+struct EmitDepthScope {
+    int32_t &d;
+    explicit EmitDepthScope(int32_t &depth) : d(depth) { ++d; }
+    ~EmitDepthScope() { --d; }
+};
+}  // namespace
+
 // True if `s` is well-formed standard UTF-8 (valid CJK/emoji identifiers pass).
 static bool IsValidUtf8(const std::string &s)
 {
@@ -167,6 +177,21 @@ void ArkTSGen::EmitExpression(const ir::AstNode *node){
     if(node == nullptr){
         HandleError("#EmitExpression: emitExpression for null astnode");
     }
+
+    // Cyclic-AST guard (see arkts.h): cut on a re-entered node (cycle) or the depth
+    // backstop; emit a placeholder and unwind instead of overflowing the stack.
+    if(emit_path_.count(node) != 0 || emit_depth_ > kEmitDepthLimit){
+        if(!emit_depth_tripped_){
+            emit_depth_tripped_ = true;
+            XABC_DBG << "[!] cyclic/too-deep AST cut in EmitExpression" << std::endl;
+        }
+        ss_ << "/*xabc:cyclic-ast*/undefined";
+        return;
+    }
+    EmitDepthScope _emit_scope(emit_depth_);
+    emit_path_.insert(node);
+    struct PathPop { std::unordered_set<const ir::AstNode*>& s; const ir::AstNode* n;
+                     ~PathPop(){ s.erase(n); } } _path_pop{emit_path_, node};
 
     switch(node->Type()){
         case AstNodeType::BINARY_EXPRESSION:{
@@ -858,6 +883,23 @@ void ArkTSGen::EmitStatement(const ir::AstNode *node)
         return;
         HandleError("#EmitStatement: emitStatement for null astnode");
     }
+
+    // Cyclic-AST guard (see arkts.h): if this node is already on the emit stack we
+    // have closed a cycle — cut it now; otherwise honour the depth backstop. Either
+    // way emit a marker and unwind instead of overflowing the stack (SIGSEGV).
+    if(emit_path_.count(node) != 0 || emit_depth_ > kEmitDepthLimit){
+        if(!emit_depth_tripped_){
+            emit_depth_tripped_ = true;
+            XABC_DBG << "[!] cyclic/too-deep AST cut in EmitStatement" << std::endl;
+        }
+        this->WriteIndent();
+        ss_ << "/*xabc:cyclic-ast — subtree truncated*/" << std::endl;
+        return;
+    }
+    EmitDepthScope _emit_scope(emit_depth_);
+    emit_path_.insert(node);
+    struct PathPop { std::unordered_set<const ir::AstNode*>& s; const ir::AstNode* n;
+                     ~PathPop(){ s.erase(n); } } _path_pop{emit_path_, node};
 
     if(node->Type() != AstNodeType::BLOCK_STATEMENT && node->Type() != AstNodeType::VARIABLE_DECLARATOR ){
         this->WriteIndent();
